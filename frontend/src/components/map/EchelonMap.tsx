@@ -196,32 +196,33 @@ function ConvergenceLegend() {
         position: "absolute",
         bottom: 32,
         left: 16,
-        background: "rgba(17,24,39,0.92)",
-        border: "1px solid #374151",
+        background: "rgba(13,19,32,0.92)",
+        border: "1px solid var(--color-border)",
         borderRadius: 8,
         padding: "10px 14px",
         fontSize: 11,
-        color: "#d1d5db",
+        color: "var(--color-text-secondary)",
         minWidth: 140,
+        backdropFilter: "blur(8px)",
       }}
     >
-      <div style={{ fontWeight: 600, marginBottom: 6, color: "#f9fafb" }}>
+      <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--color-text-primary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         Convergence Z-Score
       </div>
       {[
-        { label: "< 1.0σ  Baseline", color: "#1e3a5f" },
-        { label: "1.0–1.5σ  Elevated", color: "#f59e0b" },
+        { label: "< 1.0σ  Baseline", color: "#1a3050" },
+        { label: "1.0–1.5σ  Elevated", color: "#e5a400" },
         { label: "1.5–2.0σ  High", color: "#fb7100" },
-        { label: "2.0–3.0σ  Alert", color: "#ef4444" },
-        { label: "> 3.0σ  Extreme", color: "#7c3aed" },
+        { label: "2.0–3.0σ  Alert", color: "#f04444" },
+        { label: "> 3.0σ  Extreme", color: "#9333ea" },
       ].map(({ label, color }) => (
-        <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-          <div style={{ width: 12, height: 12, borderRadius: 2, background: color, flexShrink: 0 }} />
-          <span>{label}</span>
+        <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }} />
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{label}</span>
         </div>
       ))}
-      <div style={{ marginTop: 6, borderTop: "1px solid #374151", paddingTop: 6, color: "#6b7280" }}>
-        <span style={{ fontStyle: "italic" }}>Hatched = low confidence (&lt;30 obs.)</span>
+      <div style={{ marginTop: 8, borderTop: "1px solid var(--color-border)", paddingTop: 6, fontSize: 10, color: "var(--color-text-muted)" }}>
+        Hatched = low confidence (&lt;30 obs.)
       </div>
     </div>
   );
