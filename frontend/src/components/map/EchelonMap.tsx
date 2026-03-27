@@ -120,6 +120,29 @@ export default function EchelonMap() {
           mapStyle={MAPLIBRE_STYLE}
           attributionControl={false}
           reuseMaps
+          onLoad={() => {
+            const map = mapRef.current?.getMap();
+            if (!map) return;
+            // Tone down labels at all zoom levels so the heatmap reads clearly
+            map.getStyle().layers.forEach((layer) => {
+              if (layer.type === "symbol" && layer.layout?.["text-field"]) {
+                map.setPaintProperty(layer.id, "text-opacity", [
+                  "interpolate", ["linear"], ["zoom"],
+                  0, 0.15,
+                  4, 0.3,
+                  7, 0.6,
+                  10, 0.85,
+                ]);
+                map.setPaintProperty(layer.id, "text-halo-opacity", [
+                  "interpolate", ["linear"], ["zoom"],
+                  0, 0.1,
+                  4, 0.2,
+                  7, 0.5,
+                  10, 0.8,
+                ]);
+              }
+            });
+          }}
         />
       </DeckGL>
 
