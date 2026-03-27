@@ -1,0 +1,37 @@
+# Development overrides — hot reload, exposed ports for debugging
+# Usage: docker compose -f docker-compose.yml -f docker-compose.override.yml up
+
+# Development overrides — hot reload, exposed ports for debugging
+# Port 5433 used for db to avoid conflict with WatershedIQ on 5432
+# Usage: docker compose -f docker-compose.yml -f docker-compose.override.yml up
+
+services:
+  api:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+
+  worker:
+    command: celery -A app.workers.celery_app worker --loglevel=debug --concurrency=1
+    volumes:
+      - ./backend:/app
+
+  beat:
+    volumes:
+      - ./backend:/app
+
+  db:
+    ports:
+      - "5433:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  flower:
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5555:5555"

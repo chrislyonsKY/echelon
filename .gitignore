@@ -1,0 +1,42 @@
+# Environment — NEVER commit
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Docker volumes (local only)
+postgres_data/
+redis_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Alembic
+# (versions/ IS committed)
+
+# AI dev infrastructure — reference manually, do not auto-index
+# ai-dev/ is committed to version control but excluded from AI auto-scanning.
+# ai-dev/
