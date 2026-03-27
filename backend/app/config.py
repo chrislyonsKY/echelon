@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # ── Application ──────────────────────────────────────────────────────────
     secret_key: str
-    allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:80"]
+    allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:80", "https://echelon-geoint.org", "https://www.echelon-geoint.org"]
     debug: bool = False
 
     # ── Database ─────────────────────────────────────────────────────────────

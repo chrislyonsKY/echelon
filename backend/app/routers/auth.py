@@ -117,7 +117,7 @@ async def callback(
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=False,  # Set True in production behind HTTPS
+        secure=True,
     )
     return redirect
 
