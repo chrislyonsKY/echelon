@@ -34,6 +34,10 @@ redis_data/
 *.swo
 .DS_Store
 
+# Celery beat schedule (binary, auto-generated)
+celerybeat-schedule
+celerybeat-schedule.db
+
 # Alembic
 # (versions/ IS committed)
 

@@ -15,6 +15,21 @@ router = APIRouter()
 _MAX_RESULTS = 500
 
 
+def _signal_payload_fields(payload: dict | None) -> dict:
+    """Promote provenance fields from raw payload for easier client access."""
+    payload = payload or {}
+    metadata = payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
+
+    provenance_family = payload.get("provenance_family") or metadata.get("provenance_family")
+    confirmation_policy = payload.get("confirmation_policy") or metadata.get("confirmation_policy")
+
+    return {
+        "rawPayload": payload,
+        "provenanceFamily": provenance_family,
+        "confirmationPolicy": confirmation_policy,
+    }
+
+
 @router.get("/latest")
 async def get_latest_signals(
     limit: int = Query(default=15, le=50),
@@ -41,8 +56,8 @@ async def get_latest_signals(
             "location": {"lat": row.lat, "lng": row.lon},
             "occurredAt": row.occurred_at.isoformat() if row.occurred_at else None,
             "weight": row.weight,
-            "rawPayload": row.raw_payload or {},
             "sourceId": row.source_id,
+            **_signal_payload_fields(row.raw_payload),
         }
         for row in result.fetchall()
     ]
@@ -120,8 +135,8 @@ async def get_signals(
             "location": {"lat": row.lat, "lng": row.lon},
             "occurredAt": row.occurred_at.isoformat() if row.occurred_at else None,
             "weight": row.weight,
-            "rawPayload": row.raw_payload or {},
             "sourceId": row.source_id,
+            **_signal_payload_fields(row.raw_payload),
         }
         for row in result.fetchall()
     ]

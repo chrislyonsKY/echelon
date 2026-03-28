@@ -5,6 +5,7 @@ import CopilotPanel from "@/components/copilot/CopilotPanel";
 import EventFeed from "@/components/EventFeed";
 import AlertBell from "@/components/alerts/AlertBell";
 import TopBar from "@/components/TopBar";
+import DisclaimerFooter from "@/components/DisclaimerFooter";
 import { useEchelonStore } from "@/store/echelonStore";
 import { apiClient } from "@/services/api";
 
@@ -43,6 +44,7 @@ export default function App() {
       </div>
       <EventFeed />
       <AlertBell />
+      <DisclaimerFooter />
     </div>
   );
 }

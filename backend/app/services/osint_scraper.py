@@ -18,7 +18,8 @@ import hashlib
 import logging
 import re
 import xml.etree.ElementTree as ET
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from html import unescape
 from typing import Any
 
 import httpx
@@ -36,6 +37,9 @@ CONFLICT_KEYWORDS: list[str] = [
     "naval deployment", "drone strike", "ceasefire violation", "ammunition depot",
     "air defense", "fighter jet", "warship", "submarine", "nuclear", "sanctions",
     "weapons transfer", "casualties", "evacuation", "martial law", "coup",
+    "military", "defense", "defence", "armed forces", "army", "navy",
+    "brigade", "artillery", "munition", "infantry", "air force",
+    "war", "weapons", "battle",
 ]
 
 # Pre-compiled regex for fast keyword matching (case-insensitive)
@@ -47,13 +51,20 @@ _KEYWORD_PATTERN: re.Pattern[str] = re.compile(
 RSS_FEEDS: dict[str, str] = {
     "Bellingcat": "https://www.bellingcat.com/feed/",
     "Crisis Group": "https://www.crisisgroup.org/rss.xml",
-    "RUSI": "https://www.rusi.org/rss.xml",
     "War on the Rocks": "https://warontherocks.com/feed/",
-    "Defense One": "https://www.defenseone.com/rss/",
+    "Defense One": "https://www.defenseone.com/rss/all/",
     "The War Zone": "https://www.twz.com/feed",
-    "Janes": "https://www.janes.com/feeds/news",
-    "Reuters World": "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
 }
+
+HTML_SOURCES: dict[str, str] = {
+    "RUSI": "https://www.rusi.org/news-and-comment",
+    "Janes": "https://www.janes.com/defence-news",
+    "PressTV": "https://www.presstv.ir/Default/",
+}
+
+REUTERS_SITEMAP_INDEX_URL = "https://www.reuters.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml"
+REUTERS_SITEMAP_FALLBACK_URL = "https://www.reuters.com/arc/outboundfeeds/news-sitemap/?outputType=xml"
+REUTERS_WORLD_PATH_FRAGMENT = "/world/"
 
 TELEGRAM_CHANNELS: list[str] = [
     "rybar_en",
@@ -67,7 +78,11 @@ REDDIT_SUBREDDITS: list[str] = [
     "UkraineConflict",
     "geopolitics",
     "CredibleDefense",
+    "iran",
 ]
+PULLPUSH_SUBMISSION_URL = "https://api.pullpush.io/reddit/search/submission/"
+OLD_REDDIT_SUBREDDIT_URL = "https://old.reddit.com/r/{subreddit}/new/"
+REDDIT_LOOKBACK_DAYS = 7
 
 RELIEFWEB_URL: str = (
     "https://api.reliefweb.int/v1/reports"
@@ -104,6 +119,7 @@ EONET_EVENTS_URL: str = (
     "https://eonet.gsfc.nasa.gov/api/v3/events/geojson"
     "?status=open&days=14&limit=100"
 )
+IRANWARLIVE_FEED_URL: str = "https://iranwarlive.com/feed.json"
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +149,8 @@ class OSINTScraperService:
         """
         scrapers = [
             ("RSS feeds", self.scrape_rss_feeds),
+            ("HTML sources", self.scrape_html_sources),
+            ("Reuters", self.scrape_reuters),
             ("Telegram channels", self.scrape_telegram_channels),
             ("Reddit", self.scrape_reddit),
             ("ReliefWeb", self.scrape_reliefweb),
@@ -144,6 +162,7 @@ class OSINTScraperService:
             ("GDACS", self.scrape_gdacs),
             ("USGS earthquakes", self.scrape_usgs_earthquakes),
             ("NASA EONET", self.scrape_eonet),
+            ("IranWarLive", self.scrape_iranwarlive),
         ]
 
         all_items: list[dict[str, Any]] = []
@@ -190,6 +209,68 @@ class OSINTScraperService:
 
         return results
 
+    async def scrape_html_sources(self) -> list[dict[str, Any]]:
+        """Fetch and parse public HTML listing pages where RSS is unavailable."""
+        results: list[dict[str, Any]] = []
+
+        for source_name, source_url in HTML_SOURCES.items():
+            try:
+                response = await self._client.get(source_url)
+                response.raise_for_status()
+
+                if source_name == "RUSI":
+                    items = _parse_rusi_html(response.text)
+                elif source_name == "Janes":
+                    items = _parse_janes_html(response.text)
+                elif source_name == "PressTV":
+                    items = _parse_presstv_html(response.text)
+                else:
+                    items = []
+
+                results.extend(items)
+            except Exception:
+                logger.warning(
+                    "OSINT HTML: failed to fetch %s (%s)",
+                    source_name,
+                    source_url,
+                    exc_info=True,
+                )
+
+        return results
+
+    async def scrape_reuters(self) -> list[dict[str, Any]]:
+        """Fetch Reuters World headlines from Reuters' outbound news sitemap."""
+        sitemap_urls: list[str] = []
+
+        try:
+            response = await self._client.get(REUTERS_SITEMAP_INDEX_URL)
+            response.raise_for_status()
+            sitemap_urls = _parse_sitemap_index_xml(response.text)
+        except Exception:
+            logger.warning("OSINT Reuters: failed to fetch sitemap index", exc_info=True)
+
+        if not sitemap_urls:
+            sitemap_urls = [REUTERS_SITEMAP_FALLBACK_URL]
+
+        results: list[dict[str, Any]] = []
+        seen_urls: set[str] = set()
+
+        for sitemap_url in sitemap_urls[:2]:
+            try:
+                response = await self._client.get(sitemap_url)
+                response.raise_for_status()
+                items = _parse_reuters_sitemap_xml(response.text)
+                for item in items:
+                    url = str(item.get("url", ""))
+                    if not url or url in seen_urls:
+                        continue
+                    seen_urls.add(url)
+                    results.append(item)
+            except Exception:
+                logger.warning("OSINT Reuters: failed to fetch sitemap %s", sitemap_url, exc_info=True)
+
+        return results
+
     # ------------------------------------------------------------------
     # Telegram public preview pages
     # ------------------------------------------------------------------
@@ -220,19 +301,16 @@ class OSINTScraperService:
         return results
 
     # ------------------------------------------------------------------
-    # Reddit JSON API
+    # Reddit
     # ------------------------------------------------------------------
 
     async def scrape_reddit(self) -> list[dict[str, Any]]:
-        """Fetch recent posts from conflict-related subreddits via JSON API.
-
-        Appends .json to subreddit new-post URLs to get structured data
-        without requiring Reddit API credentials.
+        """Fetch recent posts from conflict-related subreddits.
 
         Returns:
             List of normalized signal dicts filtered for conflict keywords.
         """
-        results: list[dict[str, Any]] = []
+        results_by_url: dict[str, dict[str, Any]] = {}
 
         for subreddit in REDDIT_SUBREDDITS:
             url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=25"
@@ -241,13 +319,72 @@ class OSINTScraperService:
                 response.raise_for_status()
                 body = response.json()
                 items = _parse_reddit_json(body, subreddit)
-                results.extend(items)
+                for item in items:
+                    item_url = str(item.get("url", ""))
+                    if item_url and item_url not in results_by_url:
+                        results_by_url[item_url] = item
             except Exception:
                 logger.warning(
                     "OSINT Reddit: failed to fetch r/%s", subreddit, exc_info=True
                 )
 
-        return results
+            try:
+                unofficial_items = await self.scrape_reddit_unofficial(subreddit)
+                for item in unofficial_items:
+                    item_url = str(item.get("url", ""))
+                    if item_url and item_url not in results_by_url:
+                        results_by_url[item_url] = item
+            except Exception:
+                logger.warning(
+                    "OSINT Reddit unofficial: failed to fetch r/%s", subreddit, exc_info=True
+                )
+
+            try:
+                old_items = await self.scrape_reddit_old(subreddit)
+                for item in old_items:
+                    item_url = str(item.get("url", ""))
+                    if item_url and item_url not in results_by_url:
+                        results_by_url[item_url] = item
+            except Exception:
+                logger.warning(
+                    "OSINT Reddit old.reddit: failed to fetch r/%s", subreddit, exc_info=True
+                )
+
+        return list(results_by_url.values())
+
+    async def scrape_reddit_unofficial(self, subreddit: str) -> list[dict[str, Any]]:
+        """Fetch recent subreddit posts via PullPush without Reddit auth."""
+        after_ts = int((datetime.now(UTC) - timedelta(days=REDDIT_LOOKBACK_DAYS)).timestamp())
+        params = {
+            "subreddit": subreddit,
+            "size": "25",
+            "sort": "desc",
+            "sort_type": "created_utc",
+            "after": str(after_ts),
+        }
+
+        response = await self._client.get(PULLPUSH_SUBMISSION_URL, params=params)
+        response.raise_for_status()
+        body = response.json()
+        return _parse_pullpush_json(body, subreddit)
+
+    async def scrape_reddit_old(self, subreddit: str) -> list[dict[str, Any]]:
+        """Fetch subreddit posts from old.reddit as a tertiary fallback."""
+        url = OLD_REDDIT_SUBREDDIT_URL.format(subreddit=subreddit)
+        response = await self._client.get(url)
+        response.raise_for_status()
+        return _parse_old_reddit_html(response.text, subreddit)
+
+    async def scrape_iranwarlive(self) -> list[dict[str, Any]]:
+        """Fetch the structured IranWarLive machine feed."""
+        try:
+            response = await self._client.get(IRANWARLIVE_FEED_URL)
+            response.raise_for_status()
+            body = response.json()
+            return _parse_iranwarlive_json(body)
+        except Exception:
+            logger.warning("OSINT IranWarLive: fetch failed", exc_info=True)
+            return []
 
     # ------------------------------------------------------------------
     # ReliefWeb (UN OCHA)
@@ -752,6 +889,9 @@ def _normalize_item(
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 _GEORSS_NS = "{http://www.georss.org/georss}"
 _GEO_NS = "{http://www.w3.org/2003/01/geo/wgs84_pos#}"
+_SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
+_NEWS_NS = "{http://www.google.com/schemas/sitemap-news/0.9}"
+_IMAGE_NS = "{http://www.google.com/schemas/sitemap-image/1.1}"
 
 def _parse_rss_xml(xml_text: str, feed_name: str) -> list[dict[str, Any]]:
     """Parse an RSS 2.0 or Atom feed and filter for conflict keywords.
@@ -841,6 +981,216 @@ def _xml_text(parent: ET.Element, tag: str) -> str:
 
 
 # ------------------------------------------------------------------
+# Reuters sitemap parsers
+# ------------------------------------------------------------------
+
+def _parse_sitemap_index_xml(xml_text: str) -> list[str]:
+    """Parse a sitemap index into a list of sitemap URLs."""
+    urls: list[str] = []
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        logger.warning("OSINT Reuters: sitemap index XML parse error")
+        return urls
+
+    for sitemap_el in root.iter(f"{_SITEMAP_NS}sitemap"):
+        loc = _xml_text(sitemap_el, f"{_SITEMAP_NS}loc")
+        if loc:
+            urls.append(loc)
+
+    return urls
+
+
+def _parse_reuters_sitemap_xml(xml_text: str) -> list[dict[str, Any]]:
+    """Parse Reuters' outbound news sitemap and keep Reuters World items."""
+    items: list[dict[str, Any]] = []
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        logger.warning("OSINT Reuters: sitemap XML parse error")
+        return items
+
+    for url_el in root.iter(f"{_SITEMAP_NS}url"):
+        loc = _xml_text(url_el, f"{_SITEMAP_NS}loc")
+        if not loc or REUTERS_WORLD_PATH_FRAGMENT not in loc:
+            continue
+
+        title = _xml_text(url_el, f"{_NEWS_NS}news/{_NEWS_NS}title")
+        published_at = _xml_text(url_el, f"{_NEWS_NS}news/{_NEWS_NS}publication_date")
+        keywords_text = _xml_text(url_el, f"{_NEWS_NS}news/{_NEWS_NS}keywords")
+        caption = _xml_text(url_el, f"{_IMAGE_NS}image/{_IMAGE_NS}caption")
+
+        combined = f"{title} {caption} {keywords_text}"
+        if not _contains_conflict_keywords(combined):
+            continue
+
+        lat, lon = _geocode_item(combined)
+        keywords = [part.strip() for part in keywords_text.split(",") if part.strip()]
+
+        items.append(_normalize_item(
+            source="reuters_world",
+            source_group="reuters",
+            title=title[:200],
+            description=(caption or title)[:500],
+            url=loc,
+            published_at=published_at,
+            latitude=lat,
+            longitude=lon,
+            metadata={
+                "keywords": keywords,
+                "provenance_family": "western_wire",
+                "confirmation_policy": "wire_confirmed",
+            },
+        ))
+
+    return items
+
+
+# ------------------------------------------------------------------
+# HTML listing parsers
+# ------------------------------------------------------------------
+
+_RUSI_LINK_PATTERN: re.Pattern[str] = re.compile(
+    r'aria-label="(?P<title>[^"]+)"[^>]*href="(?P<url>/news-and-comment/[^"]+)"',
+    re.DOTALL | re.IGNORECASE,
+)
+_JANES_LINK_PATTERN: re.Pattern[str] = re.compile(
+    r'href="(?P<url>https://www\.janes\.com/osint-insights/defence-news/[^"]+)"',
+    re.IGNORECASE,
+)
+_JANES_TIME_PATTERN: re.Pattern[str] = re.compile(r'<time[^>]*datetime="(?P<date>[^"]+)"', re.IGNORECASE)
+_JANES_TITLE_PATTERN: re.Pattern[str] = re.compile(r"<h3[^>]*>(?P<title>.*?)</h3>", re.DOTALL | re.IGNORECASE)
+_JANES_ALT_PATTERN: re.Pattern[str] = re.compile(r'<img[^>]*alt="(?P<alt>[^"]*)"', re.IGNORECASE)
+_PRESSTV_LINK_PATTERN: re.Pattern[str] = re.compile(
+    r'href=(?P<url>/Detail/\d{4}/\d{2}/\d{2}/\d+/[^ >]+)',
+    re.IGNORECASE,
+)
+_PRESSTV_TITLE_PATTERN: re.Pattern[str] = re.compile(
+    r'<div class=(?:normal-news-title|latest-news-title)>(?P<title>.*?)(?:<time|</div>)',
+    re.DOTALL | re.IGNORECASE,
+)
+_PRESSTV_TIME_PATTERN: re.Pattern[str] = re.compile(
+    r'<time datetime=(?P<date>[^ >]+)',
+    re.IGNORECASE,
+)
+
+
+def _parse_rusi_html(html_text: str) -> list[dict[str, Any]]:
+    """Parse RUSI's public listing page when RSS is unavailable."""
+    items: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    for match in _RUSI_LINK_PATTERN.finditer(html_text):
+        title = unescape(match.group("title")).strip()
+        relative_url = match.group("url").strip()
+        url = f"https://www.rusi.org{relative_url}" if relative_url.startswith("/") else relative_url
+
+        if not title or url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        if not _contains_conflict_keywords(title):
+            continue
+
+        lat, lon = _geocode_item(title)
+        items.append(_normalize_item(
+            source="html_rusi",
+            title=title[:200],
+            description=title[:500],
+            url=url,
+            published_at="",
+            latitude=lat,
+            longitude=lon,
+        ))
+
+    return items
+
+
+def _parse_janes_html(html_text: str) -> list[dict[str, Any]]:
+    """Parse Janes' public defence-news listing page."""
+    items: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    for match in _JANES_LINK_PATTERN.finditer(html_text):
+        url = match.group("url").strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        body = html_text[match.start():match.start() + 1800]
+        title = _extract_regex_group(_JANES_TITLE_PATTERN, body, "title")
+        published_at = _extract_regex_group(_JANES_TIME_PATTERN, body, "date")
+        description = _extract_regex_group(_JANES_ALT_PATTERN, body, "alt") or title
+
+        title = _strip_html(unescape(title))
+        description = _strip_html(unescape(description))
+        combined = f"{title} {description}"
+
+        if not _contains_conflict_keywords(combined):
+            continue
+
+        lat, lon = _geocode_item(combined)
+        items.append(_normalize_item(
+            source="html_janes",
+            title=title[:200],
+            description=description[:500],
+            url=url,
+            published_at=published_at,
+            latitude=lat,
+            longitude=lon,
+        ))
+
+    return items
+
+
+def _parse_presstv_html(html_text: str) -> list[dict[str, Any]]:
+    """Parse PressTV's homepage headlines as context-only source items."""
+    items: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    for match in _PRESSTV_LINK_PATTERN.finditer(html_text):
+        relative_url = match.group("url").strip()
+        url = f"https://www.presstv.ir{relative_url}"
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        body = html_text[match.start():match.start() + 1400]
+        title = _strip_html(unescape(_extract_regex_group(_PRESSTV_TITLE_PATTERN, body, "title")))
+        published_at = _extract_regex_group(_PRESSTV_TIME_PATTERN, body, "date")
+        if not title or not _contains_conflict_keywords(title):
+            continue
+
+        lat, lon = _geocode_item(title)
+        items.append(_normalize_item(
+            source="html_presstv",
+            source_group="press_tv",
+            title=title[:200],
+            description=title[:500],
+            url=url,
+            published_at=published_at,
+            latitude=lat,
+            longitude=lon,
+            metadata={
+                "provenance_family": "iranian_state_media",
+                "confirmation_policy": "context_only",
+            },
+        ))
+
+    return items
+
+
+def _extract_regex_group(pattern: re.Pattern[str], text: str, group: str) -> str:
+    """Return one named regex group or an empty string."""
+    match = pattern.search(text)
+    if match is None:
+        return ""
+    return match.group(group).strip()
+
+
+# ------------------------------------------------------------------
 # Telegram HTML parser
 # ------------------------------------------------------------------
 
@@ -911,8 +1261,58 @@ def _parse_telegram_html(html: str, channel: str) -> list[dict[str, Any]]:
 
 
 # ------------------------------------------------------------------
-# Reddit JSON parser
+# Reddit parsers
 # ------------------------------------------------------------------
+
+_OLD_REDDIT_THING_PATTERN: re.Pattern[str] = re.compile(
+    r'<div class="thing[^"]*"[^>]*data-permalink="(?P<permalink>/r/[^"]+/comments/[^"]+)"'
+    r'[^>]*data-url="(?P<link_url>[^"]*)"[^>]*>(?P<body>.*?)</div>\s*</div>',
+    re.DOTALL | re.IGNORECASE,
+)
+_OLD_REDDIT_TITLE_PATTERN: re.Pattern[str] = re.compile(
+    r'<a class="title[^"]*"[^>]*>(?P<title>.*?)</a>',
+    re.DOTALL | re.IGNORECASE,
+)
+_OLD_REDDIT_SELFTEXT_PATTERN: re.Pattern[str] = re.compile(
+    r'<div class="expando"[^>]*>.*?<div class="usertext-body[^"]*"[^>]*>(?P<selftext>.*?)</div>',
+    re.DOTALL | re.IGNORECASE,
+)
+_OLD_REDDIT_TIME_PATTERN: re.Pattern[str] = re.compile(
+    r'<time[^>]*datetime="(?P<date>[^"]+)"',
+    re.IGNORECASE,
+)
+
+
+def _parse_old_reddit_html(html_text: str, subreddit: str) -> list[dict[str, Any]]:
+    """Parse classic old.reddit listing HTML when accessible."""
+    if "blocked by network security" in html_text.lower():
+        return []
+
+    items: list[dict[str, Any]] = []
+    for match in _OLD_REDDIT_THING_PATTERN.finditer(html_text):
+        permalink = match.group("permalink").strip()
+        body = match.group("body")
+        title = _strip_html(unescape(_extract_regex_group(_OLD_REDDIT_TITLE_PATTERN, body, "title")))
+        selftext = _strip_html(unescape(_extract_regex_group(_OLD_REDDIT_SELFTEXT_PATTERN, body, "selftext")))
+        published_at = _extract_regex_group(_OLD_REDDIT_TIME_PATTERN, body, "date")
+
+        post = {
+            "title": title,
+            "selftext": selftext,
+            "permalink": permalink,
+            "url": match.group("link_url").strip(),
+            "created_utc": published_at,
+            "subreddit": subreddit,
+            "author": None,
+            "score": None,
+            "num_comments": None,
+            "link_flair_text": None,
+        }
+        item = _build_reddit_item(post, subreddit, provider="old_reddit_html")
+        if item is not None:
+            items.append(item)
+
+    return items
 
 def _parse_reddit_json(body: dict[str, Any], subreddit: str) -> list[dict[str, Any]]:
     """Parse Reddit JSON listing and filter for conflict keywords.
@@ -930,30 +1330,78 @@ def _parse_reddit_json(body: dict[str, Any], subreddit: str) -> list[dict[str, A
     posts = body.get("data", {}).get("children", [])
     for post_wrapper in posts:
         post = post_wrapper.get("data", {})
-        title = post.get("title", "")
-        selftext = post.get("selftext", "")
-        combined = f"{title} {selftext}"
-
-        if not _contains_conflict_keywords(combined):
-            continue
-
-        permalink = post.get("permalink", "")
-        url = f"https://www.reddit.com{permalink}" if permalink else ""
-        created_utc = post.get("created_utc", "")
-        published_at = str(int(created_utc)) if created_utc else ""
-
-        lat, lon = _geocode_item(combined)
-        items.append(_normalize_item(
-            source=source_key,
-            title=title[:200],
-            description=selftext[:500],
-            url=url,
-            published_at=published_at,
-            latitude=lat,
-            longitude=lon,
-        ))
+        item = _build_reddit_item(post, subreddit, provider="reddit_json")
+        if item is not None:
+            items.append(item)
 
     return items
+
+
+def _parse_pullpush_json(body: dict[str, Any], subreddit: str) -> list[dict[str, Any]]:
+    """Parse PullPush Reddit archive results for a subreddit."""
+    items: list[dict[str, Any]] = []
+
+    for post in body.get("data", []):
+        if not isinstance(post, dict):
+            continue
+        item = _build_reddit_item(post, subreddit, provider="pullpush")
+        if item is not None:
+            items.append(item)
+
+    return items
+
+
+def _build_reddit_item(
+    post: dict[str, Any],
+    subreddit: str,
+    *,
+    provider: str,
+) -> dict[str, Any] | None:
+    """Normalize one Reddit or PullPush post record."""
+    source_key = f"reddit_{subreddit.lower()}"
+    title = post.get("title", "")
+    selftext = post.get("selftext", "")
+
+    if str(post.get("subreddit", "")).lower() not in ("", subreddit.lower()):
+        return None
+
+    url_hint = str(post.get("url", "") or "")
+    combined = f"{title} {selftext} {url_hint}"
+
+    if not _contains_conflict_keywords(combined):
+        return None
+
+    permalink = str(post.get("permalink", "") or "")
+    full_link = str(post.get("full_link", "") or "")
+    url = full_link or (f"https://www.reddit.com{permalink}" if permalink else "")
+    created_utc = post.get("created_utc") or post.get("created")
+    published_at = ""
+    if created_utc not in (None, ""):
+        try:
+            published_at = str(int(float(created_utc)))
+        except (TypeError, ValueError):
+            published_at = str(created_utc)
+
+    lat, lon = _geocode_item(combined)
+    return _normalize_item(
+        source=source_key,
+        title=str(title)[:200],
+        description=str(selftext)[:500],
+        url=url,
+        published_at=published_at,
+        latitude=lat,
+        longitude=lon,
+        metadata={
+            "provider": provider,
+            "subreddit": subreddit,
+            "author": post.get("author"),
+            "score": post.get("score"),
+            "num_comments": post.get("num_comments"),
+            "link_flair_text": post.get("link_flair_text"),
+            "provenance_family": "social_unofficial",
+            "confirmation_policy": "context_only",
+        },
+    )
 
 
 # ------------------------------------------------------------------
@@ -1004,6 +1452,55 @@ def _parse_reliefweb_json(body: dict[str, Any]) -> list[dict[str, Any]]:
             published_at=date_created,
             latitude=lat,
             longitude=lon,
+        ))
+
+    return items
+
+
+# ------------------------------------------------------------------
+# IranWarLive JSON parser
+# ------------------------------------------------------------------
+
+def _parse_iranwarlive_json(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse the IranWarLive machine feed into normalized signal items."""
+    items: list[dict[str, Any]] = []
+
+    for entry in body.get("items", []):
+        if not isinstance(entry, dict):
+            continue
+
+        title = str(entry.get("event_summary", "") or entry.get("type", "IranWarLive event"))
+        event_type = str(entry.get("type", "") or "")
+        location = str(entry.get("location", "") or "")
+        description = f"{event_type}. Location: {location}".strip(". ")
+        published_at = str(entry.get("timestamp", "") or body.get("last_updated", ""))
+        url = str(entry.get("source_url", "") or body.get("home_page_url", "https://iranwarlive.com"))
+
+        coords = entry.get("_osint_meta", {}).get("coordinates", {})
+        lat = _coerce_float(coords.get("lat"))
+        lon = _coerce_float(coords.get("lng"))
+        if lat is None or lon is None:
+            lat, lon = _geocode_item(f"{title} {location}")
+
+        items.append(_normalize_item(
+            source="iranwarlive",
+            title=title[:200],
+            description=description[:500],
+            url=url,
+            published_at=published_at,
+            latitude=lat,
+            longitude=lon,
+            source_group="iranwarlive",
+            signal_type="osint_scrape",
+            source_id=str(entry.get("event_id", "") or url or title),
+            metadata={
+                "event_type": event_type,
+                "location": location,
+                "confidence": entry.get("confidence"),
+                "casualties": entry.get("_osint_meta", {}).get("casualties"),
+                "provenance_family": "aggregator",
+                "confirmation_policy": "aggregated_context",
+            },
         ))
 
     return items

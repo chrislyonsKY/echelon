@@ -758,9 +758,14 @@ def _summarize_payload(payload: dict | None) -> dict:
             else:
                 summary[key] = val
     # News fields
-    for key in ("title", "url", "source"):
+    for key in ("title", "url", "source", "provenance_family", "confirmation_policy"):
         if key in payload:
             summary[key] = payload[key]
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("provenance_family", "confirmation_policy"):
+            if key in metadata and key not in summary:
+                summary[key] = metadata[key]
 
     return summary
 

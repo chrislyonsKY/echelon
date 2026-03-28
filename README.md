@@ -49,7 +49,7 @@ An AI copilot (BYOK — bring your own key) can query all data sources via natur
 ### Infrastructure
 | Source | Signal | Weight | Schedule |
 |--------|--------|--------|----------|
-| [OSM Overpass](https://overpass-api.de) | Military sites, airfields | 0.08 | Daily |
+| [OSM via ohsome](https://ohsome.org) | Military tag change detection | 0.08 | Daily |
 
 ### News (3 APIs)
 | Source | Signal | Weight | Schedule |
@@ -72,8 +72,9 @@ An AI copilot (BYOK — bring your own key) can query all data sources via natur
 ### Reference Data (loaded at startup)
 | Source | Records | Purpose |
 |--------|---------|---------|
-| [GeoNames](https://geonames.org) | 33,442 cities | City-level news geocoding |
+| [GeoNames](https://geonames.org) | 33,442 cities + country/admin codes | City-level geocoding with context weighting |
 | [OurAirports](https://ourairports.com) | 474 military airfields | Infrastructure enrichment |
+| [geoBoundaries](https://geoboundaries.org) | ADM1 polygons (global) | AOI normalization and boundary lookups |
 
 > Data attribution: GDELT Project (gdeltproject.org), Global Fishing Watch (globalfishingwatch.org), OpenStreetMap contributors.
 
@@ -184,6 +185,14 @@ z_score(cell)   = (raw_score - μ) / max(σ, 0.001)
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Disclaimer
+
+Echelon is an OSINT research tool provided "as is" without warranty. It is **not a substitute for professional intelligence analysis**. Data may be incomplete, delayed, or inaccurate. AI copilot outputs may contain errors or hallucinations. Convergence scores are statistical indicators, not confirmed events.
+
+This tool must not be used for targeting individuals, surveillance, offensive operations, or any unlawful purpose. Users are responsible for compliance with all applicable laws. Echelon is not affiliated with any government or intelligence agency.
+
+All data comes from publicly available open sources. See [DISCLAIMER.md](DISCLAIMER.md) for the full legal disclaimer.
 
 ## License
 

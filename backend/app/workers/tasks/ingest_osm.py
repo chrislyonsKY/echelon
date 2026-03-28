@@ -1,12 +1,11 @@
 """
-OSM Overpass infrastructure ingestion task.
+OSM military-tag change ingestion task.
 
-Queries Overpass for military/infrastructure features in known conflict zones.
-Runs daily at 2am UTC. New features are stored as signals; existing features
-are deduplicated by OSM type + ID.
+Queries the ohsome full-history API for recent military-tag changes in known
+conflict zones. New changes are stored as signals; repeated task runs are
+deduplicated by OSM element id plus change timestamp.
 
-Rate limit: 1 request per 60s between bbox queries.
-Task is idempotent — safe to retry on failure.
+Task is idempotent and safe to retry on failure.
 """
 import asyncio
 import logging
@@ -19,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 from app.services.convergence_scorer import SIGNAL_WEIGHTS
-from app.services.overpass import OverpassService
+from app.services.ohsome import OhsomeService
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ _INSERT_SIGNAL_SQL = text("""
     acks_late=True,
 )
 def run(self) -> dict:
-    """Query Overpass for military/infrastructure features in conflict zones.
+    """Query ohsome for recent military-tag changes in conflict zones.
 
     Returns:
         Dict with per-zone and total counts.
@@ -76,9 +75,8 @@ def run(self) -> dict:
 
 async def _ingest() -> dict:
     """Async implementation of the OSM ingestion pipeline."""
-    service = OverpassService()
+    service = OhsomeService()
     weight = SIGNAL_WEIGHTS.get("osm_change", 0.08)
-    now = datetime.now(timezone.utc)
 
     engine = create_async_engine(settings.database_url)
     session_factory = async_sessionmaker(engine, class_=AsyncSession)
@@ -93,16 +91,15 @@ async def _ingest() -> dict:
             bbox = zone["bbox"]
 
             try:
-                elements = await service.query_infrastructure(bbox)
+                elements = await service.query_military_changes(bbox)
             except Exception:
-                logger.warning("Overpass query failed for %s, skipping", zone_name, exc_info=True)
+                logger.warning("ohsome query failed for %s, skipping", zone_name, exc_info=True)
                 zone_results[zone_name] = {"error": "query_failed"}
                 continue
 
             if not elements:
                 zone_results[zone_name] = {"inserted": 0, "skipped": 0, "total": 0}
-                # Rate limit between zones
-                await asyncio.sleep(60)
+                await asyncio.sleep(2)
                 continue
 
             # Build signal rows
@@ -110,6 +107,8 @@ async def _ingest() -> dict:
             for el in elements:
                 lat = el["latitude"]
                 lon = el["longitude"]
+                occurred_at = _parse_occurred_at(el.get("change_timestamp"))
+                osm_ref = str(el.get("osm_ref") or f"{el['osm_type']}/{el['osm_id']}")
 
                 rows.append({
                     "source": "osm",
@@ -119,16 +118,22 @@ async def _ingest() -> dict:
                     "h3_index_9": h3.geo_to_h3(lat, lon, 9),
                     "latitude": lat,
                     "longitude": lon,
-                    "occurred_at": now,
+                    "occurred_at": occurred_at,
                     "weight": weight,
                     "raw_payload": orjson.dumps({
                         "osm_type": el["osm_type"],
                         "osm_id": el["osm_id"],
+                        "osm_ref": el.get("osm_ref", ""),
                         "name": el["name"],
                         "infra_type": el["infra_type"],
+                        "change_type": el.get("change_type", ""),
+                        "change_timestamp": el.get("change_timestamp", ""),
+                        "valid_from": el.get("valid_from", ""),
+                        "valid_to": el.get("valid_to", ""),
+                        "versions_count": el.get("versions_count", 0),
                         "tags": el["tags"],
                     }).decode(),
-                    "source_id": f"{el['osm_type']}/{el['osm_id']}",
+                    "source_id": f"{osm_ref}@{el.get('change_timestamp', '')}",
                     "dedup_hash": service.build_dedup_hash(el),
                 })
 
@@ -153,8 +158,7 @@ async def _ingest() -> dict:
             }
             logger.info("OSM %s: %d inserted, %d skipped, %d total", zone_name, inserted, skipped, len(elements))
 
-            # Rate limit: 60s between large bbox queries
-            await asyncio.sleep(60)
+            await asyncio.sleep(2)
 
     finally:
         await service.close()
@@ -166,3 +170,18 @@ async def _ingest() -> dict:
         "total_skipped": total_skipped,
         "zones": zone_results,
     }
+
+
+def _parse_occurred_at(value: str | None) -> datetime:
+    """Parse an ISO-8601 change timestamp, falling back to now."""
+    if not value:
+        return datetime.now(timezone.utc)
+
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+
+    try:
+        return datetime.fromisoformat(text).astimezone(timezone.utc)
+    except ValueError:
+        return datetime.now(timezone.utc)

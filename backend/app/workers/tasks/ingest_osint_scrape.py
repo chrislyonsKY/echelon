@@ -98,6 +98,9 @@ async def _ingest() -> dict:
             SIGNAL_WEIGHTS.get("osint_scrape", 0.12),
         )
         occurred_at = _parse_published_at(item.get("published_at"))
+        metadata = item.get("metadata", {}) or {}
+        provenance_family = _metadata_text(metadata, "provenance_family")
+        confirmation_policy = _metadata_text(metadata, "confirmation_policy")
 
         raw_payload = orjson.dumps({
             "title": item.get("title", ""),
@@ -105,7 +108,9 @@ async def _ingest() -> dict:
             "url": item.get("url", ""),
             "source": item.get("source", ""),
             "source_group": source_group,
-            "metadata": item.get("metadata", {}),
+            "provenance_family": provenance_family,
+            "confirmation_policy": confirmation_policy,
+            "metadata": metadata,
         }).decode()
 
         rows.append({
@@ -206,3 +211,11 @@ def _datetime_from_timestamp(value: float) -> datetime:
         return datetime.fromtimestamp(value, tz=timezone.utc)
     except (OverflowError, OSError, ValueError):
         return datetime.now(timezone.utc)
+
+
+def _metadata_text(metadata: dict[str, Any], key: str) -> str:
+    """Return one metadata field as a normalized string."""
+    value = metadata.get(key, "")
+    if value in (None, ""):
+        return ""
+    return str(value)
