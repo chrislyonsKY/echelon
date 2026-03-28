@@ -328,9 +328,14 @@ async def copilot_chat(
             raise HTTPException(400, f"Unknown provider: {provider}")
     except HTTPException:
         raise
-    except Exception:
+    except httpx.ConnectError:
+        if provider == "ollama":
+            raise HTTPException(status_code=503, detail="Ollama is not running. Install with: curl -fsSL https://ollama.com/install.sh | sh && ollama serve")
+        raise HTTPException(status_code=503, detail=f"Could not connect to {provider} API")
+    except Exception as exc:
         logger.exception("Copilot request failed (%s)", provider)
-        raise HTTPException(status_code=502, detail="Copilot request failed")
+        detail = str(exc)[:100] if str(exc) else "Copilot request failed"
+        raise HTTPException(status_code=502, detail=detail)
 
     map_action = _extract_map_action(final_text)
     return CopilotResponse(

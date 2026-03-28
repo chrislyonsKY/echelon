@@ -105,11 +105,21 @@ export default function CopilotPanel() {
       if (response.mapAction) {
         applyMapAction(response.mapAction as Parameters<typeof applyMapAction>[0]);
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      let errorMsg = "Something went wrong. Check that your API key is valid and try again.";
+      if (err && typeof err === "object" && "message" in err) {
+        const msg = String((err as { message: string }).message);
+        if (msg.includes("401")) errorMsg = "Invalid API key. Please check your key and try again.";
+        else if (msg.includes("429")) errorMsg = "Rate limit exceeded. Wait a moment and try again.";
+        else if (msg.includes("503")) errorMsg = provider === "ollama"
+          ? "Ollama is not running on the server. Ask the admin to install and start it, or switch to another provider."
+          : "Service temporarily unavailable. Try again in a moment.";
+        else if (msg.includes("502")) errorMsg = "The copilot backend is restarting. Try again in a few seconds.";
+      }
       addCopilotMessage({
         id: crypto.randomUUID(),
         role: "assistant",
-        content: "Sorry, something went wrong. Check that your API key is valid and try again.",
+        content: errorMsg,
         timestamp: new Date(),
       });
     } finally {
