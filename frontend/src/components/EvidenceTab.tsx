@@ -36,6 +36,9 @@ interface EvidenceItem {
   graphicConfidence: number | null;
   graphicReason: string | null;
   reviewStatus: string;
+  restricted: boolean;
+  restrictedReason: string | null;
+  contentHash: string | null;
 }
 
 type GraphicPref = "hide" | "blur" | "show";
@@ -131,8 +134,29 @@ export default function EvidenceTab({ signalId }: Props) {
             <div key={item.id} style={{
               padding: "10px 16px", borderBottom: "1px solid rgba(30,45,70,0.3)",
             }}>
+              {/* Restricted content — non-dismissable warning */}
+              {item.restricted && (
+                <div style={{
+                  padding: "10px 12px", marginBottom: 8, borderRadius: 4,
+                  background: "rgba(240,68,68,0.15)", border: "1px solid rgba(240,68,68,0.3)",
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-danger)", marginBottom: 4 }}>
+                    RESTRICTED CONTENT
+                  </div>
+                  <div style={{ fontSize: 9, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+                    This evidence is classified as {item.restrictedReason?.replace(/_/g, " ") || "restricted"}.
+                    It is retained for investigative purposes only and is not publicly amplifiable.
+                    {item.contentHash && (
+                      <span style={{ display: "block", marginTop: 4, fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--color-text-muted)" }}>
+                        Hash: {item.contentHash.slice(0, 16)}...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Thumbnail */}
-              {item.thumbnailUrl && !shouldHide && (
+              {item.thumbnailUrl && !shouldHide && !item.restricted && (
                 <div style={{ position: "relative", marginBottom: 8 }}>
                   <img
                     src={item.thumbnailUrl}
@@ -208,8 +232,11 @@ export default function EvidenceTab({ signalId }: Props) {
                   />
                 )}
 
+                {/* Restricted flag — perpetrator/terrorist content */}
+                {item.restricted && <Badge label="RESTRICTED" color="#f04444" />}
+
                 {/* Graphic flag */}
-                {isGraphic && <Badge label="GRAPHIC" color="#f04444" />}
+                {isGraphic && !item.restricted && <Badge label="GRAPHIC" color="#f04444" />}
 
                 {/* Review status */}
                 {item.reviewStatus === "human_approved" && <Badge label="REVIEWED" color="#00c48c" />}

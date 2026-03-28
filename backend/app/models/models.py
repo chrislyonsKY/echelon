@@ -146,7 +146,12 @@ class Evidence(Base):
 
     # Review workflow
     review_status             = Column(Text, nullable=False, default="unreviewed")
-    # "unreviewed" | "auto_flagged" | "human_approved" | "human_rejected"
+    # "unreviewed" | "auto_flagged" | "human_approved" | "human_rejected" | "restricted"
+
+    # Perpetrator/terrorist content — never publicly amplified
+    restricted                = Column(Boolean, default=False)
+    restricted_reason         = Column(Text)  # "perpetrator_produced", "terrorist_promoted", etc.
+    content_hash              = Column(Text)  # SHA-256 for cross-referencing (e.g., GIFCT)
 
     # Raw metadata from moderation/extraction pipeline
     moderation_payload        = Column(JSONB)

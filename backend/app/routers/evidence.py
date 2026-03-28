@@ -50,19 +50,28 @@ class EvidenceReview(BaseModel):
 @router.get("/for/{signal_id}")
 async def get_evidence_for_signal(
     signal_id: str,
+    include_restricted: bool = Query(default=False, description="Include restricted content (analyst only)"),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
-    """Return all evidence items attached to a signal event."""
+    """Return evidence items attached to a signal event.
+
+    Restricted content (perpetrator/terrorist-produced) is excluded by default.
+    Pass include_restricted=true for authenticated analyst access only.
+    """
+    restriction_clause = "" if include_restricted else "AND restricted = false"
+
     result = await session.execute(
-        text("""
+        text(f"""
             SELECT id, signal_id, type, url, platform, thumbnail_url, title,
                    description, author, language, published_at, attached_at,
                    provenance_family, confirmation_policy,
                    geolocation_status, time_verification_status,
                    graphic_flag, graphic_confidence, graphic_reason,
-                   review_status
+                   review_status, restricted, restricted_reason, content_hash
             FROM evidence
             WHERE signal_id = :signal_id
+              AND review_status != 'human_rejected'
+              {restriction_clause}
             ORDER BY attached_at DESC
         """),
         {"signal_id": signal_id},
@@ -226,7 +235,7 @@ async def get_pending_review(
 
 def _row_to_dict(r) -> dict:
     """Convert a DB row to API response dict."""
-    return {
+    d = {
         "id": str(r.id),
         "signalId": str(r.signal_id),
         "type": r.type,
@@ -247,4 +256,14 @@ def _row_to_dict(r) -> dict:
         "graphicConfidence": r.graphic_confidence,
         "graphicReason": r.graphic_reason,
         "reviewStatus": r.review_status,
+        "restricted": r.restricted,
+        "restrictedReason": r.restricted_reason,
+        "contentHash": r.content_hash,
     }
+
+    # Restricted content: redact URL and thumbnail from public responses
+    if r.restricted:
+        d["url"] = "[RESTRICTED — analyst access only]"
+        d["thumbnailUrl"] = None
+
+    return d

@@ -43,6 +43,9 @@ def upgrade() -> None:
         sa.Column("graphic_confidence", sa.Float),
         sa.Column("graphic_reason", sa.Text),
         sa.Column("review_status", sa.Text, nullable=False, server_default="unreviewed"),
+        sa.Column("restricted", sa.Boolean, server_default="false"),
+        sa.Column("restricted_reason", sa.Text),
+        sa.Column("content_hash", sa.Text),
         sa.Column("moderation_payload", JSONB),
     )
 

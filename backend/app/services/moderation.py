@@ -22,8 +22,30 @@ class ModerationResult:
     graphic_flag: bool = False
     graphic_confidence: float = 0.0
     graphic_reason: str = ""
-    review_status: str = "unreviewed"  # "unreviewed" | "auto_flagged" | "human_approved"
+    review_status: str = "unreviewed"
+    # "unreviewed" | "auto_flagged" | "human_approved" | "human_rejected" | "restricted"
+    restricted: bool = False  # Perpetrator/terrorist content — never publicly amplified
+    restricted_reason: str = ""
     moderation_payload: dict[str, Any] = field(default_factory=dict)
+
+
+# ── Perpetrator/Terrorist Content Policy ──────────────────────────────────────
+#
+# Perpetrator-produced or terrorist-promoted video is NEVER publicly amplified.
+# It is either:
+#   1. Blocked entirely (review_status="human_rejected"), or
+#   2. Retained as restricted analyst evidence (review_status="restricted")
+#      with: content hash, warnings, provenance tagging, mandatory human review.
+#
+# Restricted content:
+#   - Is never shown in public feeds, search results, or map overlays
+#   - Is only visible to authenticated analysts with explicit opt-in
+#   - Carries a non-dismissable warning banner
+#   - Retains full provenance chain for investigative use
+#   - Is hashed for cross-referencing (e.g., with the GIFCT hash-sharing database)
+#
+# This policy cannot be overridden by configuration — it is hardcoded.
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class ModerationService(ABC):
