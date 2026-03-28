@@ -41,8 +41,9 @@ async def get_convergence_tiles(
             SELECT h3_index, resolution, z_score, raw_score,
                    signal_breakdown, low_confidence, computed_at
             FROM h3_convergence_scores
-            WHERE resolution = :resolution
-            ORDER BY z_score DESC
+            WHERE resolution = :resolution AND raw_score > 0.01
+            ORDER BY raw_score DESC
+            LIMIT 3000
         """),
         params,
     )
