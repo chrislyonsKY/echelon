@@ -11,37 +11,92 @@
 ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?logo=cloudflare&logoColor=white)
 ![Status](https://img.shields.io/badge/status-active-brightgreen)
 
-> Open-source GEOINT conflict and maritime activity monitoring dashboard powered by multi-source signal convergence.
+> Open-source GEOINT convergence dashboard for conflict and maritime monitoring. 20+ live data sources fused into a single intelligence picture.
 
-## Overview
+**Live: [echelon-geoint.org](https://echelon-geoint.org)**
 
-Echelon fuses five independent open-data signal streams — GDELT conflict events and GKG threat articles, Global Fishing Watch vessel anomalies, Sentinel-2 EO change detection, OSM infrastructure overlays, and multi-source news feeds — into a single convergence heatmap. Rather than showing one data layer at a time, Echelon computes a Z-score per H3 cell against a 365-day rolling baseline, surfacing locations where multiple independent signals are simultaneously elevated. A BYOK Anthropic copilot agent can query all data sources via natural language and control the map directly.
+## What It Does
 
-Designed for OSINT researchers, journalists, policy analysts, and the public. No account required to use the map.
+Echelon fuses **20 independent open-data signal streams** into a single convergence heatmap. Instead of showing one data layer at a time, it computes a Z-score per H3 hexagonal cell, surfacing locations where multiple independent signals are simultaneously elevated above their historical baseline.
+
+An AI copilot (BYOK — bring your own key) can query all data sources via natural language and fly the map to areas of interest.
 
 ## Data Sources
 
-| Source | Signal Type | Weight | Access |
-|--------|------------|--------|--------|
-| [Global Fishing Watch](https://globalfishingwatch.org) | AIS gap (dark vessel) | 0.35 | Free (non-commercial) |
-| [GDELT Events](https://gdeltproject.org) | CAMEO conflict codes | 0.30 | Free / open |
-| [Sentinel-2 / Element84](https://earth-search.aws.element84.com) | EO change detection (NBR) | 0.25 | Free / open STAC |
-| [GDELT GKG](https://gdeltproject.org) | Threat-themed articles | 0.15 | Free / open |
-| [NewsData](https://newsdata.io) / [NewsAPI](https://newsapi.org) / [GNews](https://gnews.io) | Conflict news articles | 0.12 | Free tiers |
-| [GFW](https://globalfishingwatch.org) | Vessel loitering | 0.10 | Free (non-commercial) |
-| [OSM Overpass](https://overpass-api.de) | Military / infrastructure | 0.08 | Free / open |
+### Conflict & Events
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| [GDELT](https://gdeltproject.org) Export | CAMEO conflict codes | 0.30 | 15 min |
+| [GDELT](https://gdeltproject.org) GKG | Threat-themed articles | 0.15 | 15 min |
 
-> Data sourced from ACLED (acleddata.com), Global Fishing Watch (globalfishingwatch.org), GDELT Project (gdeltproject.org).
+### Maritime
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| [Global Fishing Watch](https://globalfishingwatch.org) | AIS gaps (dark vessels) | 0.35 | 12h |
+| [Global Fishing Watch](https://globalfishingwatch.org) | Vessel loitering | 0.10 | 12h |
+| [AISStream](https://aisstream.io) | Real-time AIS positions | 0.08 | 30 min |
+
+### Aviation
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| [OpenSky Network](https://opensky-network.org) | Military ADS-B | 0.20 | 30 min |
+
+### Earth Observation
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| [Sentinel-2 / Element84](https://earth-search.aws.element84.com) | NBR change detection | 0.25 | Daily |
+
+### Infrastructure
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| [OSM Overpass](https://overpass-api.de) | Military sites, airfields | 0.08 | Daily |
+
+### News (3 APIs)
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| [NewsData](https://newsdata.io) / [NewsAPI](https://newsapi.org) / [GNews](https://gnews.io) | Conflict articles | 0.12 | 4h |
+
+### OSINT Scraper (9 sources)
+| Source | Signal | Weight | Schedule |
+|--------|--------|--------|----------|
+| RSS (Bellingcat, Crisis Group, RUSI, War on the Rocks, Janes) | Conflict reporting | 0.12 | 2h |
+| Telegram public channels | Real-time conflict posts | 0.12 | 2h |
+| Reddit (r/OSINT, r/geopolitics, r/CredibleDefense) | Community intelligence | 0.12 | 2h |
+| YouTube | Conflict video search | 0.12 | 2h |
+| Mastodon | OSINT community posts | 0.12 | 2h |
+| Bluesky | OSINT/conflict posts | 0.12 | 2h |
+| Nitter/X | Twitter conflict content | 0.12 | 2h |
+| UN ReliefWeb | Humanitarian reports | 0.12 | 2h |
+| RansomWatch | Dark web monitoring (clearnet) | 0.12 | 2h |
+
+### Reference Data (loaded at startup)
+| Source | Records | Purpose |
+|--------|---------|---------|
+| [GeoNames](https://geonames.org) | 33,442 cities | City-level news geocoding |
+| [OurAirports](https://ourairports.com) | 474 military airfields | Infrastructure enrichment |
+
+> Data attribution: GDELT Project (gdeltproject.org), Global Fishing Watch (globalfishingwatch.org), OpenStreetMap contributors.
+
+## Features
+
+- **Convergence heatmap** — H3 hexagonal cells colored by Z-score. Click any cell to investigate.
+- **Investigation sidebar** — narrative summary of signals in a cell, grouped by source with event details.
+- **Location search** — type a place name, fly there instantly (Nominatim geocoder).
+- **Live event feed** — scrolling feed of latest signals globally. Click to fly to location.
+- **AI copilot** — BYOK with 4 providers (Anthropic Claude, OpenAI GPT-4o, Google Gemini, self-hosted Ollama). 7 tool functions query live data. Hardened guardrails prevent off-topic use.
+- **GitHub OAuth** — sign in to save AOIs and receive email alerts.
+- **Email alerts** — threshold-based alerts via Resend when Z-scores spike in saved areas.
+- **Multi-layer map** — toggle conflict events (red), vessel activity (blue), news/OSINT (amber), infrastructure (green), military aviation (cyan).
 
 ## Getting Started
 
 ### Prerequisites
 
 - Docker & Docker Compose v2
-- 4GB RAM minimum (8GB recommended for EO processing)
+- 4GB RAM minimum (8GB recommended)
 - API keys: GFW, NewsData, NewsAPI, GNews (all free tiers)
-- GitHub OAuth App credentials (for user auth)
-- Anthropic API key (BYOK, user-supplied in browser)
+- Optional: AISStream, YouTube Data API, OpenSky (all free)
+- GitHub OAuth App for user authentication
 
 ### Local Development
 
@@ -51,15 +106,11 @@ cd echelon
 cp .env.example .env
 # Edit .env with your API keys
 docker compose up --build
-```
-
-The app will be available at `http://localhost`.
-
-After containers are healthy, run the initial migration:
-
-```bash
+# After containers are healthy:
 docker compose exec api alembic upgrade head
 ```
+
+Open `http://localhost` in your browser.
 
 ## Deployment
 
@@ -67,94 +118,76 @@ docker compose exec api alembic upgrade head
 
 | Component | Provider | Purpose |
 |-----------|----------|---------|
-| **Backend** | [DigitalOcean](https://digitalocean.com) Droplet | Docker Compose (API, workers, PostGIS, Redis) |
-| **CDN / SSL** | [Cloudflare](https://cloudflare.com) | DNS, SSL termination, DDoS protection, edge caching |
+| **Backend** | [DigitalOcean](https://digitalocean.com) Droplet (4GB+) | Docker Compose stack |
+| **CDN / SSL** | [Cloudflare](https://cloudflare.com) | DNS, SSL, DDoS protection, edge caching |
 
-### Production Deploy (DigitalOcean + Cloudflare)
-
-**1. Droplet Setup**
+### Production Deploy
 
 ```bash
-# SSH into your Droplet
-ssh -i ~/.ssh/id_echelon root@<DROPLET_IP>
-
-# Install Docker
+# On the Droplet:
 apt update && apt install -y docker.io docker-compose-v2 git
-
-# Clone and configure
 git clone https://github.com/chrislyonsKY/echelon.git
 cd echelon
-cp .env.example .env
-nano .env  # Fill in all API keys and secrets
-
-# Launch
+cp .env.example .env && nano .env  # Fill in API keys
 docker compose up -d --build
-
-# Run migration
 docker compose exec api alembic upgrade head
 ```
 
-**2. Cloudflare DNS**
+**Cloudflare DNS:** A record → Droplet IP (proxied). SSL mode: Flexible.
 
-- `A` record: `echelon-geoint.org` -> Droplet IP (Proxied, orange cloud)
-- SSL mode: **Full (strict)**
-- Cloudflare handles SSL termination, caching, and DDoS protection
-
-**3. GitHub OAuth**
-
-Set the callback URL in your GitHub OAuth App settings:
-```
-https://echelon-geoint.org/api/auth/callback
-```
+**GitHub OAuth callback:** `https://echelon-geoint.org/api/auth/callback`
 
 ### Updating
 
 ```bash
-ssh -i ~/.ssh/id_echelon root@<DROPLET_IP>
-cd echelon
-git pull
-docker compose up -d --build
+cd echelon && git pull
+docker compose up -d --build --force-recreate
 ```
-
-## Usage
-
-- **Convergence heatmap** -- The primary view. H3 cells colored by Z-score (standard deviations above baseline). Click any cell to open the investigation sidebar.
-- **Investigation sidebar** -- Three tabs: Layer Panel (toggle individual signal feeds), Event Timeline (chronological signal feed for selected cell), Signal Cards (sourced evidence cards per event).
-- **Copilot** -- Enter your Anthropic API key to enable. Ask questions like *"Show me unusual vessel behavior near the Strait of Hormuz this week"* or *"What's driving the convergence spike in eastern Ukraine?"*
-- **Alerts** -- Sign in with GitHub to save AOIs and receive email alerts when Z-scores cross thresholds.
 
 ## Architecture
 
-8-container Docker Compose stack:
-
 ```
 Cloudflare (CDN + SSL)
-  |
+  │
 DigitalOcean Droplet
-  |
+  │
   Nginx (reverse proxy)
-  +-- Frontend (Vite/React/MapLibre/Deck.gl)
-  +-- FastAPI (API + copilot proxy)
-      +-- PostgreSQL + PostGIS (H3 cells, signals, users, AOIs)
-      +-- Redis (Celery broker + API response cache)
-      +-- Celery Worker (ingestion, EO processing)
-      +-- Celery Beat (scheduled jobs every 15min)
-      +-- Flower (task monitoring, internal)
+  ├── Frontend (Vite / React / MapLibre GL JS / Deck.gl)
+  ├── FastAPI (REST API + copilot proxy)
+  │   ├── PostgreSQL + PostGIS (signals, H3 cells, users, AOIs)
+  │   ├── Redis (Celery broker + cache)
+  │   ├── Celery Worker (ingestion, EO processing)
+  │   ├── Celery Beat (scheduled jobs)
+  │   └── Flower (task monitoring)
 ```
 
-Full architecture documentation in `ai-dev/architecture.md`.
+## Convergence Scoring
+
+```
+raw_score(cell) = Σ weight(signal) × exp(-0.05 × age_hours)
+z_score(cell)   = (raw_score - μ) / max(σ, 0.001)
+```
+
+- **H3 resolutions:** 5 (global ~252km²) → 7 (regional ~5km²) → 9 (tactical ~0.1km²)
+- **Baseline:** 365-day rolling statistics per cell
+- **Low confidence:** cells with < 30 observations flagged
+- **Recomputed** every 15 minutes
+
+## Security
+
+- BYOK API keys: never logged, never persisted server-side, held in memory for request duration only
+- Session cookies: HttpOnly, SameSite=Lax, Secure
+- Copilot guardrails: input pattern blocklist, injection detection, GEOINT-only system prompt
+- All SQL parameterized — no string interpolation
+- See [SECURITY.md](SECURITY.md) for vulnerability reporting
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Security
-
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities. **Never report API key exposure through public Issues.**
-
 ## License
 
-Apache 2.0 -- see [LICENSE](LICENSE) for details.
+Apache 2.0 — see [LICENSE](LICENSE).
 
 ---
 
