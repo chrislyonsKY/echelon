@@ -5,6 +5,7 @@ import { useSignalEvents } from "@/hooks/useConvergenceTiles";
 import type { SelectedCell } from "@/store/echelonStore";
 import type { SignalEvent } from "@/services/api";
 import { format } from "date-fns";
+import { getDisplayTitle, hasTranslation, textDirectionForRecord } from "@/utils/language";
 
 const SOURCE_LABELS: Record<string, string> = {
   acled:     "ACLED",
@@ -45,6 +46,8 @@ export function EventTimeline({ cell }: { cell: SelectedCell }) {
 
 function TimelineEvent({ event }: { event: SignalEvent }) {
   const color = SOURCE_COLORS[event.source] ?? "#9ca3af";
+  const title = getDisplayTitle(event, event.signalType.replace(/_/g, " "));
+  const titleDirection = hasTranslation(event) ? "ltr" : textDirectionForRecord(event);
   return (
     <div
       style={{
@@ -65,8 +68,8 @@ function TimelineEvent({ event }: { event: SignalEvent }) {
             {format(new Date(event.occurredAt), "MMM d HH:mm")}
           </span>
         </div>
-        <div style={{ fontSize: 12, color: "var(--color-text-primary)" }}>
-          {event.signalType.replace(/_/g, " ")}
+        <div dir={titleDirection} style={{ fontSize: 12, color: "var(--color-text-primary)" }}>
+          {title}
         </div>
       </div>
     </div>
@@ -94,6 +97,8 @@ export function SignalCards({ cell }: { cell: SelectedCell }) {
 
 function SignalCard({ event }: { event: SignalEvent }) {
   const color = SOURCE_COLORS[event.source] ?? "#9ca3af";
+  const title = getDisplayTitle(event, event.signalType.replace(/_/g, " "));
+  const titleDirection = hasTranslation(event) ? "ltr" : textDirectionForRecord(event);
   return (
     <article
       aria-label={`${SOURCE_LABELS[event.source] ?? event.source} signal card`}
@@ -120,8 +125,8 @@ function SignalCard({ event }: { event: SignalEvent }) {
           {format(new Date(event.occurredAt), "yyyy-MM-dd HH:mm")} UTC
         </span>
       </div>
-      <div style={{ fontSize: 12, color: "var(--color-text-primary)", marginBottom: 4 }}>
-        {event.signalType.replace(/_/g, " ")}
+      <div dir={titleDirection} style={{ fontSize: 12, color: "var(--color-text-primary)", marginBottom: 4 }}>
+        {title}
       </div>
       <div style={{ fontSize: 10, color: "var(--color-text-secondary)", display: "flex", justifyContent: "space-between" }}>
         <span>

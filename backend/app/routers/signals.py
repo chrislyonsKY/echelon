@@ -88,17 +88,33 @@ async def get_signal_detail(
 
 
 def _signal_payload_fields(payload: dict | None) -> dict:
-    """Promote provenance fields from raw payload for easier client access."""
+    """Promote provenance and multilingual fields from raw payload."""
     payload = payload or {}
     metadata = payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}
 
     provenance_family = payload.get("provenance_family") or metadata.get("provenance_family")
     confirmation_policy = payload.get("confirmation_policy") or metadata.get("confirmation_policy")
+    language = payload.get("language") or metadata.get("language")
+    text_direction = payload.get("text_direction") or ("rtl" if language in {"ar", "fa", "he", "ur"} else "ltr")
+    translation_status = payload.get("translation_status")
+    title_original = payload.get("title_original") or payload.get("title")
+    description_original = payload.get("description_original") or payload.get("description")
+    title_translated = payload.get("title_translated")
+    description_translated = payload.get("description_translated")
 
     return {
         "rawPayload": payload,
         "provenanceFamily": provenance_family,
         "confirmationPolicy": confirmation_policy,
+        "language": language,
+        "textDirection": text_direction,
+        "translationStatus": translation_status,
+        "titleOriginal": title_original,
+        "descriptionOriginal": description_original,
+        "titleTranslated": title_translated,
+        "descriptionTranslated": description_translated,
+        "displayTitle": title_translated or title_original,
+        "displayDescription": description_translated or description_original,
     }
 
 

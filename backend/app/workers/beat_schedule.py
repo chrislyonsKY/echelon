@@ -54,6 +54,11 @@ BEAT_SCHEDULE = {
         "task": "app.workers.tasks.alerts.check_all_aois",
         "schedule": crontab(minute="*/15"),
     },
+    # ── Event clustering ──────────────────────────────────────────────────
+    "cluster-events-every-15m": {
+        "task": "app.workers.tasks.clustering.cluster_events",
+        "schedule": crontab(minute="3,18,33,48"),  # Offset from convergence scoring
+    },
     # ── Maintenance ───────────────────────────────────────────────────────────
     "trim-old-signals-daily": {
         "task": "app.workers.tasks.maintenance.trim_old_signals",

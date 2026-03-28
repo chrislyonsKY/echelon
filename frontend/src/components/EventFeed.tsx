@@ -7,6 +7,8 @@ import { useState, useEffect } from "react";
 import { useEchelonStore } from "@/store/echelonStore";
 import { apiClient, type SignalEvent } from "@/services/api";
 import { format } from "date-fns";
+import { getDisplayTitle, hasTranslation, textDirectionForRecord, truncateText } from "@/utils/language";
+import { countryForCoordinates } from "@/utils/countries";
 
 const FEED_REFRESH_MS = 60_000; // 1 minute
 
@@ -32,7 +34,7 @@ const PROVENANCE_BADGES: Record<string, { label: string; color: string }> = {
 };
 
 export default function EventFeed() {
-  const { setViewState } = useEchelonStore();
+  const { setViewState, openCountryOverview } = useEchelonStore();
   const [events, setEvents] = useState<SignalEvent[]>([]);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -113,6 +115,9 @@ export default function EventFeed() {
           ) : (
             events.map((event) => {
               const color = SOURCE_COLORS[event.source] || "#94a3b8";
+              const title = _feedTitle(event);
+              const titleDirection = hasTranslation(event) ? "ltr" : textDirectionForRecord(event);
+              const country = countryForCoordinates(event.location.lat, event.location.lng);
               return (
                 <button
                   key={event.id}
@@ -137,12 +142,47 @@ export default function EventFeed() {
                   <div style={{ width: 4, borderRadius: 2, background: color, flexShrink: 0, alignSelf: "stretch" }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
-                      <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {_feedTitle(event)}
+                      <span
+                        dir={titleDirection}
+                        style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {title}
                       </span>
-                      <span style={{ fontSize: 9, color: "var(--color-text-muted)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
-                        {event.occurredAt ? format(new Date(event.occurredAt), "HH:mm") : ""}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        {country && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              openCountryOverview(country.name);
+                            }}
+                            onKeyDown={(ev) => {
+                              if (ev.key === "Enter" || ev.key === " ") {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                openCountryOverview(country.name);
+                              }
+                            }}
+                            style={{
+                              border: "1px solid var(--color-border)",
+                              borderRadius: 999,
+                              background: "transparent",
+                              color: "var(--color-text-secondary)",
+                              padding: "0 6px",
+                              fontSize: 8,
+                              fontFamily: "var(--font-mono)",
+                              cursor: "pointer",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {country.flag}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 9, color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+                          {event.occurredAt ? format(new Date(event.occurredAt), "HH:mm") : ""}
+                        </span>
+                      </div>
                     </div>
                     <div style={{ fontSize: 10, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
                       {_provenanceBadge(event)}
@@ -186,15 +226,16 @@ function _provenanceBadge(event: SignalEvent): JSX.Element | null {
 
 function _feedTitle(event: SignalEvent): string {
   const p = event.rawPayload || {};
+  const displayTitle = getDisplayTitle(event);
   switch (event.signalType) {
     case "gdelt_conflict": return "Conflict event";
-    case "gdelt_gkg_threat": return (p.title as string)?.slice(0, 50) || "Threat signal";
+    case "gdelt_gkg_threat": return truncateText(displayTitle, 50) || "Threat signal";
     case "gfw_ais_gap": return "Vessel went dark";
     case "gfw_loitering": return "Vessel loitering";
-    case "newsdata_article": return (p.title as string)?.slice(0, 50) || "News";
+    case "newsdata_article": return truncateText(displayTitle, 50) || "News";
     case "osm_change": return `${(p.infra_type as string || "").replace(/_/g, " ")}`;
     case "opensky_military": return `Military: ${p.callsign || "unknown"}`;
-    default: return event.signalType.replace(/_/g, " ");
+    default: return truncateText(displayTitle, 50) || event.signalType.replace(/_/g, " ");
   }
 }
 

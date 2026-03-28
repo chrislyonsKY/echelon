@@ -27,8 +27,12 @@ import MeasureTools from "./MeasureTools";
 import SunCalcTool from "./SunCalc";
 import ExifDropZone from "./ExifDropZone";
 import CyberLayers from "./CyberLayers";
+import { getDisplayDescription, getDisplayTitle, hasTranslation, textDirectionForRecord } from "@/utils/language";
+import { countryFlagForName } from "@/utils/countries";
+import { severityFromZScore } from "@/utils/symbology";
 
 const REFRESH_MS = 15 * 60 * 1000;
+const AIRCRAFT_ICON_ID = "opensky-aircraft-icon";
 
 // Source color palette — consistent across the entire app
 const SOURCE_COLORS: Record<string, { color: string; label: string }> = {
@@ -47,7 +51,7 @@ export default function EchelonMap() {
   const mapRef = useRef<MapRef>(null);
   const {
     viewState, setViewState, setSelectedCell,
-    activeResolution, dateRange, basemapStyle,
+    activeResolution, dateRange, basemapStyle, theaterMode,
   } = useEchelonStore();
 
   const [tiles, setTiles] = useState<ConvergenceTile[]>([]);
@@ -87,6 +91,46 @@ export default function EchelonMap() {
       .catch(() => setSignals([]));
   }, [viewState.zoom, viewState.longitude, viewState.latitude, dateRange]);
 
+  // Re-register aircraft icon whenever style reloads.
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const ensure = () => { void ensureAircraftIcon(map); };
+    ensure();
+    map.on("styledata", ensure);
+    return () => {
+      map.off("styledata", ensure);
+    };
+  }, [basemapStyle]);
+
+  // Theater mode: auto-fly to highest Z-score cell every 60 seconds.
+  useEffect(() => {
+    if (!theaterMode || tiles.length === 0) return;
+
+    const flyToHighest = () => {
+      const highest = tiles.reduce((max, tile) => (tile.zScore > max.zScore ? tile : max), tiles[0]);
+      if (!highest) return;
+      try {
+        const [lat, lng] = cellToLatLng(highest.h3Index);
+        const current = useEchelonStore.getState().viewState;
+        setViewState({
+          ...current,
+          longitude: lng,
+          latitude: lat,
+          zoom: Math.max(6, current.zoom ?? 2),
+          pitch: 0,
+          bearing: 0,
+        });
+      } catch {
+        // Ignore malformed cells in fly-to logic.
+      }
+    };
+
+    flyToHighest();
+    const interval = setInterval(flyToHighest, 60_000);
+    return () => clearInterval(interval);
+  }, [theaterMode, tiles, setViewState]);
+
   const tileGeoJSON = useMemo(() => tilesToGeoJSON(tiles), [tiles]);
   const signalGeoJSON = useMemo(() => signalsToGeoJSON(signals), [signals]);
 
@@ -124,6 +168,10 @@ export default function EchelonMap() {
           source: props.source,
           signalType: props.signalType,
           title: props.title,
+          zScore: props.zScore,
+          heading: props.heading,
+          callsign: props.callsign,
+          originCountry: props.originCountry,
           occurredAt: props.occurredAt,
           provenance: props.provenance,
           detail1: props.detail1,
@@ -161,13 +209,14 @@ export default function EchelonMap() {
         onMouseMove={handleMouseMove}
         mapStyle={getBasemapStyleUrl(basemapStyle)}
         attributionControl={false}
-        interactiveLayerIds={["convergence-circles", "signal-dots"]}
+        interactiveLayerIds={["convergence-circles", "signal-dots", "opensky-aircraft"]}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onLoad={() => {
           const map = mapRef.current?.getMap();
           if (!map) return;
+          void ensureAircraftIcon(map);
           // Dim basemap labels so data stands out
           map.getStyle().layers.forEach((layer) => {
             if (layer.type === "symbol" && layer.layout?.["text-field"]) {
@@ -226,6 +275,7 @@ export default function EchelonMap() {
           <Layer
             id="signal-glow"
             type="circle"
+            filter={["!=", ["get", "source"], "opensky"]}
             paint={{
               "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 8, 8, 12, 12, 16],
               "circle-color": [
@@ -234,7 +284,6 @@ export default function EchelonMap() {
                 "gfw", "rgba(59,130,246,0.2)",
                 "newsdata", "rgba(245,158,11,0.2)",
                 "osm", "rgba(16,185,129,0.15)",
-                "opensky", "rgba(6,182,212,0.2)",
                 "osint_scrape", "rgba(245,158,11,0.15)",
                 "firms", "rgba(249,115,22,0.2)",
                 "rgba(148,163,184,0.12)",
@@ -246,6 +295,7 @@ export default function EchelonMap() {
           <Layer
             id="signal-dots"
             type="circle"
+            filter={["!=", ["get", "source"], "opensky"]}
             paint={{
               "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 8, 5, 12, 7],
               "circle-color": [
@@ -254,7 +304,6 @@ export default function EchelonMap() {
                 "gfw", "#3b82f6",
                 "newsdata", "#f59e0b",
                 "osm", "#10b981",
-                "opensky", "#06b6d4",
                 "osint_scrape", "#f59e0b",
                 "firms", "#f97316",
                 "aisstream", "#3b82f6",
@@ -263,6 +312,32 @@ export default function EchelonMap() {
               "circle-opacity": 0.92,
               "circle-stroke-width": 1,
               "circle-stroke-color": "rgba(255,255,255,0.5)",
+            }}
+          />
+          <Layer
+            id="opensky-aircraft"
+            type="symbol"
+            filter={["==", ["get", "source"], "opensky"]}
+            layout={{
+              "icon-image": AIRCRAFT_ICON_ID,
+              "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.42, 8, 0.62, 12, 0.84],
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+              "icon-rotation-alignment": "map",
+              "icon-rotate": ["coalesce", ["to-number", ["get", "heading"]], 0],
+              "text-field": ["get", "callsignLabel"],
+              "text-size": ["interpolate", ["linear"], ["zoom"], 4, 9, 10, 11],
+              "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+              "text-offset": [1.2, 0],
+              "text-anchor": "left",
+              "text-allow-overlap": true,
+              "text-ignore-placement": true,
+            }}
+            paint={{
+              "text-color": "#f8fafc",
+              "text-halo-color": "rgba(15,23,42,0.92)",
+              "text-halo-width": 1.6,
+              "text-halo-blur": 0.6,
             }}
           />
         </Source>
@@ -370,6 +445,9 @@ function SignalPopup({ data, lat, lng }: { data: Record<string, unknown>; lat: n
   const source = String(data.source || "");
   const signalType = String(data.signalType || "");
   const title = String(data.title || signalType.replace(/_/g, " "));
+  const titleDirection = String(data.textDirection || "ltr") === "rtl" ? "rtl" : "ltr";
+  const zScore = Number(data.zScore);
+  const severity = severityFromZScore(Number.isFinite(zScore) ? zScore : null);
   const occurredAt = String(data.occurredAt || "");
   const provenance = String(data.provenance || "");
   const detail1 = String(data.detail1 || "");
@@ -385,8 +463,22 @@ function SignalPopup({ data, lat, lng }: { data: Record<string, unknown>; lat: n
         <span style={{
           width: 8, height: 8, borderRadius: "50%", background: srcMeta.color, flexShrink: 0,
         }} />
-        <span style={{ fontWeight: 700, fontSize: 13, color: "#f1f5f9" }}>
+        <span dir={titleDirection} style={{ fontWeight: 700, fontSize: 13, color: "#f1f5f9", flex: 1 }}>
           {title.length > 60 ? title.slice(0, 57) + "..." : title}
+        </span>
+        <span
+          style={{
+            border: `1px solid ${severity.color}`,
+            color: severity.color,
+            borderRadius: 999,
+            padding: "1px 6px",
+            fontSize: 9,
+            fontWeight: 700,
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {severity.label}
         </span>
       </div>
 
@@ -530,10 +622,9 @@ function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
     type: "FeatureCollection",
     features: signals.map(s => {
       const p = s.rawPayload || {};
-
-      // Extract human-readable info from payload
-      const title = (p.title as string) || (p.callsign as string) || (p.name as string)
-        || (p.infra_type as string)?.replace(/_/g, " ") || s.signalType.replace(/_/g, " ");
+      const title = getDisplayTitle(s, s.signalType.replace(/_/g, " "));
+      const detailDescription = getDisplayDescription(s);
+      const textDirection = hasTranslation(s) ? "ltr" : textDirectionForRecord(s);
 
       // Build detail lines for the popup
       let detail1 = "";
@@ -547,9 +638,17 @@ function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
       if (p.origin_country) detail1 = `${p.origin_country}`;
       if (p.velocity) detail2 = `Speed: ${Math.round(p.velocity as number)} m/s`;
       if (p.source && typeof p.source === "string") detail2 = `via ${p.source}`;
-      if (p.description && typeof p.description === "string") {
-        detail1 = detail1 || (p.description as string).slice(0, 100);
+      if (detailDescription) {
+        detail1 = detail1 || detailDescription.slice(0, 100);
       }
+      const heading = asNumber(p.heading);
+      const callsign = asString(p.callsign);
+      const originCountry = asString(p.origin_country);
+      const flag = countryFlagForName(originCountry);
+      const callsignLabel = callsign
+        ? [flag, callsign].filter(Boolean).join(" ")
+        : [flag, originCountry].filter(Boolean).join(" ");
+      const zScore = asNumber(p.z_score) ?? asNumber(p.zScore) ?? asNumber(p.zscore);
 
       return {
         type: "Feature" as const,
@@ -559,6 +658,12 @@ function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
           source: s.source,
           signalType: s.signalType,
           title,
+          textDirection,
+          zScore: zScore ?? 0,
+          heading: heading ?? 0,
+          callsign: callsign || "",
+          originCountry: originCountry || "",
+          callsignLabel: callsignLabel || originCountry || "",
           occurredAt: s.occurredAt || "",
           provenance: s.provenanceFamily || s.confirmationPolicy || "",
           detail1,
@@ -568,4 +673,44 @@ function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
       };
     }),
   };
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function ensureAircraftIcon(map: any): Promise<void> {
+  if (map.hasImage(AIRCRAFT_ICON_ID)) return;
+  const image = await loadAircraftSvgImage();
+  if (!map.hasImage(AIRCRAFT_ICON_ID)) {
+    map.addImage(AIRCRAFT_ICON_ID, image, { pixelRatio: 2 });
+  }
+}
+
+function loadAircraftSvgImage(): Promise<HTMLImageElement> {
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g transform="translate(32 32)">
+    <path d="M-1 -26 L4 -5 L14 -2 L14 2 L4 1 L0 14 L4 19 L4 24 L0 22 L-4 24 L-4 19 L0 14 L-4 1 L-14 2 L-14 -2 L-4 -5 Z"
+      fill="rgba(2,6,23,0.55)" transform="translate(1 2)"/>
+    <path d="M0 -27 L5 -6 L16 -3 L16 3 L5 1 L1 15 L5 21 L5 26 L0 23 L-5 26 L-5 21 L-1 15 L-5 1 L-16 3 L-16 -3 L-5 -6 Z"
+      fill="#ffffff"/>
+  </g>
+</svg>`;
+  const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  return new Promise((resolve, reject) => {
+    const image = new Image(64, 64);
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load aircraft icon"));
+    image.src = src;
+  });
 }

@@ -25,6 +25,7 @@ celery_app = Celery(
         "app.workers.tasks.convergence",
         "app.workers.tasks.alerts",
         "app.workers.tasks.maintenance",
+        "app.workers.tasks.clustering",
     ],
 )
 

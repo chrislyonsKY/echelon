@@ -106,10 +106,17 @@ interface EchelonState {
 
   // Sidebar state
   sidebarOpen: boolean;
-  sidebarTab: "layers" | "timeline" | "signals";
+  sidebarTab: "activity" | "events" | "layers";
 
   // Basemap
   basemapStyle: string;
+
+  // UI panels
+  showMethodology: boolean;
+  selectedEventId: string | null;
+  theaterMode: boolean;
+  countryOverviewOpen: boolean;
+  countryOverviewCountry: string | null;
 
   // Auth state
   user: User | null;
@@ -126,8 +133,14 @@ interface EchelonState {
   addCopilotMessage: (message: CopilotMessage) => void;
   setCopilotOpen: (open: boolean) => void;
   setByokKey: (key: string | null) => void;
-  setSidebarTab: (tab: "layers" | "timeline" | "signals") => void;
+  setSidebarTab: (tab: "activity" | "events" | "layers") => void;
+  setSidebarOpen: (open: boolean) => void;
   setUser: (user: User | null) => void;
+  setShowMethodology: (show: boolean) => void;
+  setSelectedEventId: (id: string | null) => void;
+  setTheaterMode: (enabled: boolean) => void;
+  openCountryOverview: (country: string) => void;
+  closeCountryOverview: () => void;
 }
 
 export const useEchelonStore = create<EchelonState>()(
@@ -154,10 +167,15 @@ export const useEchelonStore = create<EchelonState>()(
     unreadAlertCount: 0,
     alertPanelOpen: false,
     sidebarOpen: false,
-    sidebarTab: "layers",
+    sidebarTab: "activity",
     basemapStyle: "dark",
     user: null,
     authLoading: true,
+    showMethodology: false,
+    selectedEventId: null,
+    theaterMode: false,
+    countryOverviewOpen: false,
+    countryOverviewCountry: null,
 
     // ── Actions ─────────────────────────────────────────────────────────────
     setBasemapStyle: (style) => set({ basemapStyle: style }),
@@ -230,7 +248,24 @@ export const useEchelonStore = create<EchelonState>()(
     setByokKey: (key) => set({ byokKey: key }),
 
     setSidebarTab: (tab) => set({ sidebarTab: tab }),
+    setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
     setUser: (user) => set({ user, authLoading: false }),
+
+    setShowMethodology: (show) => set({ showMethodology: show }),
+
+    setSelectedEventId: (id) => set({ selectedEventId: id }),
+
+    setTheaterMode: (enabled) =>
+      set({
+        theaterMode: enabled,
+        countryOverviewOpen: enabled ? false : _get().countryOverviewOpen,
+        sidebarOpen: enabled ? false : _get().sidebarOpen,
+        alertPanelOpen: enabled ? false : _get().alertPanelOpen,
+        copilotOpen: enabled ? false : _get().copilotOpen,
+      }),
+
+    openCountryOverview: (country) => set({ countryOverviewOpen: true, countryOverviewCountry: country }),
+    closeCountryOverview: () => set({ countryOverviewOpen: false }),
   }))
 );

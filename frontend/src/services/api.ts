@@ -89,6 +89,15 @@ export interface SignalEvent {
   sourceId?: string;
   provenanceFamily?: string;
   confirmationPolicy?: string;
+  language?: string;
+  textDirection?: string;
+  translationStatus?: string;
+  titleOriginal?: string | null;
+  descriptionOriginal?: string | null;
+  titleTranslated?: string | null;
+  descriptionTranslated?: string | null;
+  displayTitle?: string | null;
+  displayDescription?: string | null;
 }
 
 export interface AOI {
@@ -183,6 +192,71 @@ export const alertsApi = {
   createAoi: (aoi: Omit<AOI, "id" | "createdAt">) =>
     apiClient.post<AOI>("/alerts/aois", aoi),
   deleteAoi: (aoiId: string) => apiClient.delete<void>(`/alerts/aois/${aoiId}`),
+};
+
+// ── Events API ───────────────────────────────────────────────────────────
+
+export interface EchelonEvent {
+  id: string;
+  title: string;
+  eventType: string;
+  location: { lat: number; lng: number };
+  h3Index: string;
+  firstSeen: string;
+  lastSeen: string;
+  sourceFamilies: string[];
+  corroborationCount: number;
+  confirmationStatus: string;
+  signalCount: number;
+  summary?: string;
+}
+
+export interface EventDetail extends EchelonEvent {
+  createdAt: string;
+  updatedAt: string;
+  signals: Array<{
+    id: string;
+    source: string;
+    signalType: string;
+    location: { lat: number; lng: number };
+    occurredAt: string;
+    weight: number;
+    provenanceFamily?: string;
+    confirmationPolicy?: string;
+    sourceId?: string;
+  }>;
+  evidence: Array<{
+    id: string;
+    signalId: string;
+    type: string;
+    url: string;
+    platform?: string;
+    thumbnailUrl?: string;
+    title?: string;
+    provenanceFamily?: string;
+    graphicFlag: boolean;
+    reviewStatus: string;
+  }>;
+}
+
+export const eventsApi = {
+  list: (params?: { bbox?: string; eventType?: string; confirmation?: string; days?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.bbox) qs.set("bbox", params.bbox);
+    if (params?.eventType) qs.set("event_type", params.eventType);
+    if (params?.confirmation) qs.set("confirmation", params.confirmation);
+    if (params?.days) qs.set("days", String(params.days));
+    const query = qs.toString();
+    return apiClient.get<EchelonEvent[]>(`/events/${query ? `?${query}` : ""}`);
+  },
+
+  getDetail: (eventId: string) =>
+    apiClient.get<EventDetail>(`/events/${eventId}`),
+
+  getForCell: (h3Index: string, days?: number) =>
+    apiClient.get<EchelonEvent[]>(
+      `/events/for-cell/${h3Index}${days ? `?days=${days}` : ""}`
+    ),
 };
 
 // ── Auth API ──────────────────────────────────────────────────────────────────

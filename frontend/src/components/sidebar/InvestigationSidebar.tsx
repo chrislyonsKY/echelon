@@ -10,7 +10,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useEchelonStore } from "@/store/echelonStore";
 import { signalsApi, type SignalEvent } from "@/services/api";
 import { format } from "date-fns";
+import { getDisplayTitle, hasTranslation, textDirectionForRecord } from "@/utils/language";
 import LayerPanel from "./LayerPanel";
+import EventsPanel from "../EventsPanel";
 
 const SOURCE_META: Record<string, { label: string; color: string; icon: string }> = {
   gdelt:    { label: "GDELT",              color: "#ef4444", icon: "!" },
@@ -22,12 +24,15 @@ const SOURCE_META: Record<string, { label: string; color: string; icon: string }
 };
 
 export default function InvestigationSidebar() {
-  const { selectedCell, setSelectedCell, dateRange } = useEchelonStore();
+  const { selectedCell, setSelectedCell, setSidebarOpen, sidebarTab, setSidebarTab, dateRange } = useEchelonStore();
   const [events, setEvents] = useState<SignalEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<"activity" | "layers">("activity");
+  const tab = sidebarTab;
 
-  const handleClose = useCallback(() => setSelectedCell(null), [setSelectedCell]);
+  const handleClose = useCallback(() => {
+    setSelectedCell(null);
+    setSidebarOpen(false);
+  }, [setSelectedCell, setSidebarOpen]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
@@ -37,7 +42,11 @@ export default function InvestigationSidebar() {
 
   // Fetch events when cell is selected
   useEffect(() => {
-    if (!selectedCell) return;
+    if (!selectedCell) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     signalsApi
       .getForCell(
@@ -49,8 +58,6 @@ export default function InvestigationSidebar() {
       .catch(() => setEvents([]))
       .finally(() => setLoading(false));
   }, [selectedCell, dateRange]);
-
-  if (!selectedCell) return null;
 
   // Group events by source
   const grouped: Record<string, SignalEvent[]> = {};
@@ -76,26 +83,34 @@ export default function InvestigationSidebar() {
       <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text-muted)", fontWeight: 600, marginBottom: 4 }}>
-            Cell Investigation
+            {selectedCell ? "Cell Investigation" : "Global Events"}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontFamily: "var(--font-mono)" }}>
-            {selectedCell.h3Index}
-          </div>
-          <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{
-              display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 11,
-              fontWeight: 600, fontFamily: "var(--font-mono)",
-              background: "var(--color-accent-muted)", color: "var(--color-accent)",
-              border: "1px solid rgba(45,140,240,0.3)",
-            }}>
-              {events.length} signal{events.length !== 1 ? "s" : ""}
-            </span>
-            {Object.keys(grouped).length > 1 && (
-              <span style={{ fontSize: 10, color: "var(--color-warning)" }}>
-                {Object.keys(grouped).length} sources converging
-              </span>
-            )}
-          </div>
+          {selectedCell ? (
+            <>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontFamily: "var(--font-mono)" }}>
+                {selectedCell.h3Index}
+              </div>
+              <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{
+                  display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 11,
+                  fontWeight: 600, fontFamily: "var(--font-mono)",
+                  background: "var(--color-accent-muted)", color: "var(--color-accent)",
+                  border: "1px solid rgba(45,140,240,0.3)",
+                }}>
+                  {events.length} signal{events.length !== 1 ? "s" : ""}
+                </span>
+                {Object.keys(grouped).length > 1 && (
+                  <span style={{ fontSize: 10, color: "var(--color-warning)" }}>
+                    {Object.keys(grouped).length} sources converging
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+              Regional event clusters for the current date range
+            </div>
+          )}
         </div>
         <button onClick={handleClose} aria-label="Close" style={{ background: "none", border: "none", color: "var(--color-text-muted)", cursor: "pointer", fontSize: 18, padding: 4 }}>
           ×
@@ -104,15 +119,22 @@ export default function InvestigationSidebar() {
 
       {/* Tabs */}
       <div style={{ display: "flex", borderBottom: "1px solid var(--color-border)" }}>
-        {(["activity", "layers"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{
+        {(["activity", "events", "layers"] as const).map((t) => (
+          <button
+            key={t}
+            disabled={!selectedCell && t !== "events"}
+            onClick={() => setSidebarTab(t)}
+            style={{
             flex: 1, padding: "8px", background: "none", border: "none",
             borderBottom: tab === t ? "2px solid var(--color-accent)" : "2px solid transparent",
             color: tab === t ? "var(--color-text-primary)" : "var(--color-text-muted)",
-            cursor: "pointer", fontSize: 11, fontWeight: tab === t ? 600 : 400,
+            cursor: !selectedCell && t !== "events" ? "not-allowed" : "pointer",
+            opacity: !selectedCell && t !== "events" ? 0.5 : 1,
+            fontSize: 11, fontWeight: tab === t ? 600 : 400,
             textTransform: "uppercase", letterSpacing: "0.05em",
-          }}>
-            {t === "activity" ? "Activity" : "Layers"}
+          }}
+          >
+            {t === "activity" ? "Activity" : t === "events" ? "Events" : "Layers"}
           </button>
         ))}
       </div>
@@ -120,7 +142,15 @@ export default function InvestigationSidebar() {
       {/* Content */}
       <div style={{ flex: 1, overflow: "auto" }}>
         {tab === "layers" ? (
-          <LayerPanel />
+          selectedCell ? (
+            <LayerPanel />
+          ) : (
+            <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: 12 }}>
+              Select a convergence cell to inspect layer-level signals.
+            </div>
+          )
+        ) : tab === "events" ? (
+          <EventsPanel />
         ) : loading ? (
           <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: 12 }}>
             <span style={{ animation: "pulse 1.5s infinite" }}>Loading signals...</span>
@@ -173,11 +203,12 @@ function EventCard({ event, color }: { event: SignalEvent; color: string }) {
   const title = _getEventTitle(event);
   const detail = _getEventDetail(payload);
   const provenance = event.confirmationPolicy || event.provenanceFamily;
+  const titleDirection = hasTranslation(event) ? "ltr" : textDirectionForRecord(event);
 
   return (
     <div style={{ padding: "6px 16px 6px 28px", fontSize: 11, lineHeight: 1.5 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ color: "var(--color-text-primary)", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+        <span dir={titleDirection} style={{ color: "var(--color-text-primary)", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
           {title}
           {provenance && (
             <span style={{ fontSize: 8, fontWeight: 700, padding: "1px 4px", borderRadius: 3, background: _provenanceColor(provenance) + "22", color: _provenanceColor(provenance), border: `1px solid ${_provenanceColor(provenance)}44` }}>
@@ -201,16 +232,17 @@ function EventCard({ event, color }: { event: SignalEvent; color: string }) {
 
 function _getEventTitle(event: SignalEvent): string {
   const p = event.rawPayload || {};
+  const displayTitle = getDisplayTitle(event);
   switch (event.signalType) {
     case "gdelt_conflict": return `Conflict event (CAMEO ${p.EventCode || "?"})`;
-    case "gdelt_gkg_threat": return (p.title as string) || `Threat article (${(p.themes as string[])?.join(", ") || "?"})`;
+    case "gdelt_gkg_threat": return displayTitle || `Threat article (${(p.themes as string[])?.join(", ") || "?"})`;
     case "gfw_ais_gap": return "AIS gap — vessel went dark";
     case "gfw_loitering": return "Vessel loitering detected";
-    case "newsdata_article": return (p.title as string) || "News article";
+    case "newsdata_article": return displayTitle || "News article";
     case "osm_change": return `${((p.infra_type as string) || "infrastructure").replace(/_/g, " ")}${p.name ? `: ${p.name}` : ""}`;
     case "sentinel2_nbr_anomaly": return `EO anomaly — ${((p.anomaly_fraction as number) * 100).toFixed(0)}% disturbed`;
     case "opensky_military": return `Military aircraft${p.callsign ? ` (${p.callsign})` : ""}`;
-    default: return event.signalType.replace(/_/g, " ");
+    default: return displayTitle || event.signalType.replace(/_/g, " ");
   }
 }
 

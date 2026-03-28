@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # ── Ollama (self-hosted LLM) ────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
 
+    # ── Translation / multilingual ───────────────────────────────────────────
+    translation_backend: str = ""
+    translation_target_language: str = "en"
+
     # ── Convergence scorer ────────────────────────────────────────────────────
     convergence_alert_threshold: float = 2.0
     convergence_baseline_days: int = 365

@@ -1,13 +1,24 @@
 /**
  * EventDetail — modal/panel showing full detail for a single signal event.
- * Supports permalink via ?event=<id> URL parameter.
+ * Supports permalink via ?signal=<id> URL parameter.
  * Shows related signals in the same H3 cell for event clustering context.
  */
-import { useState, useEffect } from "react";
+import { type CSSProperties, useState, useEffect } from "react";
 import { apiClient } from "@/services/api";
 import { useEchelonStore } from "@/store/echelonStore";
 import { format } from "date-fns";
 import EvidenceTab from "./EvidenceTab";
+import { countryForCoordinates } from "@/utils/countries";
+import { corroborationBadgeFromCount } from "@/utils/symbology";
+import {
+  getDisplayDescription,
+  getDisplayTitle,
+  getOriginalDescription,
+  getOriginalTitle,
+  hasTranslation,
+  languageLabel,
+  textDirectionForRecord,
+} from "@/utils/language";
 
 interface EventDetailData {
   id: string;
@@ -22,6 +33,15 @@ interface EventDetailData {
   rawPayload: Record<string, unknown>;
   provenanceFamily?: string;
   confirmationPolicy?: string;
+  language?: string;
+  textDirection?: string;
+  translationStatus?: string;
+  titleOriginal?: string | null;
+  descriptionOriginal?: string | null;
+  titleTranslated?: string | null;
+  descriptionTranslated?: string | null;
+  displayTitle?: string | null;
+  displayDescription?: string | null;
   relatedSignals: Array<{
     id: string;
     source: string;
@@ -31,20 +51,29 @@ interface EventDetailData {
     weight: number;
     provenanceFamily?: string;
     confirmationPolicy?: string;
+    language?: string;
+    textDirection?: string;
+    titleOriginal?: string | null;
+    descriptionOriginal?: string | null;
+    titleTranslated?: string | null;
+    descriptionTranslated?: string | null;
+    displayTitle?: string | null;
+    displayDescription?: string | null;
+    rawPayload: Record<string, unknown>;
   }>;
 }
 
 export default function EventDetail() {
-  const { setViewState } = useEchelonStore();
+  const { setViewState, openCountryOverview } = useEchelonStore();
   const [event, setEvent] = useState<EventDetailData | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"detail" | "evidence">("detail");
 
-  // Check URL for ?event=<id> permalink on mount
+  // Check URL for ?signal=<id> permalink on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const eventId = params.get("event");
-    if (eventId) loadEvent(eventId);
+    const signalId = params.get("signal");
+    if (signalId) loadEvent(signalId);
   }, []);
 
   // Listen for custom event to open detail
@@ -61,7 +90,7 @@ export default function EventDetail() {
       setEvent(data);
       // Update URL without reload
       const url = new URL(window.location.href);
-      url.searchParams.set("event", id);
+      url.searchParams.set("signal", id);
       window.history.replaceState({}, "", url.toString());
       // Fly to location
       setViewState({
@@ -81,17 +110,47 @@ export default function EventDetail() {
   const close = () => {
     setEvent(null);
     const url = new URL(window.location.href);
-    url.searchParams.delete("event");
+    url.searchParams.delete("signal");
     window.history.replaceState({}, "", url.toString());
   };
 
   const copyPermalink = () => {
     if (!event) return;
-    const url = `${window.location.origin}?event=${event.id}`;
+    const url = `${window.location.origin}?signal=${event.id}`;
     navigator.clipboard.writeText(url);
   };
 
   if (!event && !loading) return null;
+
+  const displayTitle = event ? getDisplayTitle(event, event.signalType.replace(/_/g, " ")) : "";
+  const displayDescription = event ? getDisplayDescription(event) : null;
+  const originalTitle = event ? getOriginalTitle(event) : null;
+  const originalDescription = event ? getOriginalDescription(event) : null;
+  const translated = event ? hasTranslation(event) : false;
+  const textDirection = event ? textDirectionForRecord(event) : "ltr";
+  const contentDirection = translated ? "ltr" : textDirection;
+  const showOriginalBlock = translated && ((originalTitle && originalTitle !== displayTitle) || originalDescription);
+  const hiddenPayloadFields = new Set([
+    "title",
+    "description",
+    "title_original",
+    "description_original",
+    "title_translated",
+    "description_translated",
+    "language",
+    "language_name",
+    "text_direction",
+    "translation_status",
+  ]);
+  const country = event ? countryForCoordinates(event.location.lat, event.location.lng) : null;
+  const sourceFamilyCount = event
+    ? new Set(
+        [event, ...event.relatedSignals]
+          .map((s) => (s.provenanceFamily || s.source || "").trim())
+          .filter(Boolean)
+      ).size || 1
+    : 1;
+  const confidence = corroborationBadgeFromCount(sourceFamilyCount);
 
   return (
     <div style={{
@@ -109,11 +168,51 @@ export default function EventDetail() {
             display: "flex", justifyContent: "space-between", alignItems: "flex-start",
           }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>
-                {event.signalType.replace(/_/g, " ")}
+              <div dir={contentDirection} style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>
+                {displayTitle}
               </div>
-              <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>
-                {event.source} | {event.occurredAt ? format(new Date(event.occurredAt), "MMM d, yyyy HH:mm") : ""}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, color: "var(--color-text-muted)" }}>
+                  {event.signalType.replace(/_/g, " ")} | {event.source} | {event.occurredAt ? format(new Date(event.occurredAt), "MMM d, yyyy HH:mm") : ""}
+                </span>
+                {country && (
+                  <button
+                    type="button"
+                    onClick={() => openCountryOverview(country.name)}
+                    style={{
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 999,
+                      background: "transparent",
+                      color: "var(--color-text-secondary)",
+                      padding: "0 7px",
+                      cursor: "pointer",
+                      fontSize: 9,
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    {country.flag} {country.name}
+                  </button>
+                )}
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    borderRadius: 999,
+                    border: `1px solid ${confidence.color}88`,
+                    background: `${confidence.color}1a`,
+                    color: confidence.color,
+                    padding: "1px 8px",
+                  }}
+                >
+                  <span aria-hidden>{confidence.icon}</span>
+                  <span>{confidence.label}</span>
+                </span>
               </div>
             </div>
             <div style={{ display: "flex", gap: 4 }}>
@@ -157,6 +256,50 @@ export default function EventDetail() {
             </div>
           )}
 
+          {(displayDescription || event.language || showOriginalBlock) && (
+            <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--color-border)" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                Content
+              </div>
+              {event.language && (
+                <div style={{ display: "flex", gap: 6, marginBottom: displayDescription || showOriginalBlock ? 8 : 0, flexWrap: "wrap" }}>
+                  <Badge label={languageLabel(event.language)} color="#8b5cf6" />
+                  {translated && <Badge label="TRANSLATED" color="#8b5cf6" />}
+                </div>
+              )}
+              {displayDescription && (
+                <div dir={contentDirection} style={{ fontSize: 11, color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
+                  {displayDescription}
+                </div>
+              )}
+              {showOriginalBlock && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "8px 10px",
+                    borderRadius: 4,
+                    background: "rgba(51,65,85,0.22)",
+                    border: "1px solid rgba(71,85,105,0.35)",
+                  }}
+                >
+                  <div style={{ fontSize: 9, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+                    Original ({languageLabel(event.language)})
+                  </div>
+                  {originalTitle && originalTitle !== displayTitle && (
+                    <div dir={textDirection} style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: originalDescription ? 4 : 0 }}>
+                      {originalTitle}
+                    </div>
+                  )}
+                  {originalDescription && (
+                    <div dir={textDirection} style={{ fontSize: 10, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+                      {originalDescription}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Location */}
           <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--color-border)", fontSize: 11 }}>
             <Row label="Location" value={`${event.location.lat.toFixed(4)}, ${event.location.lng.toFixed(4)}`} />
@@ -172,7 +315,7 @@ export default function EventDetail() {
               Raw Payload
             </div>
             {Object.entries(event.rawPayload || {}).map(([k, v]) => {
-              if (k === "metadata" || v === null || v === "") return null;
+              if (k === "metadata" || hiddenPayloadFields.has(k) || v === null || v === "") return null;
               const display = typeof v === "object" ? JSON.stringify(v) : String(v);
               return <Row key={k} label={k} value={display.slice(0, 120)} />;
             })}
@@ -192,7 +335,9 @@ export default function EventDetail() {
                 }}>
                   <SourceDot source={r.source} />
                   <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 500 }}>{r.signalType.replace(/_/g, " ")}</span>
+                    <span dir={hasTranslation(r) ? "ltr" : textDirectionForRecord(r)} style={{ fontWeight: 500 }}>
+                      {getDisplayTitle(r, r.signalType.replace(/_/g, " "))}
+                    </span>
                     {r.provenanceFamily && (
                       <span style={{ marginLeft: 4, fontSize: 8, padding: "1px 3px", borderRadius: 3, background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
                         {r.provenanceFamily.replace(/_/g, " ")}
@@ -253,7 +398,7 @@ function SourceDot({ source }: { source: string }) {
   );
 }
 
-const btnStyle: React.CSSProperties = {
+const btnStyle: CSSProperties = {
   padding: "3px 8px", borderRadius: 4, border: "1px solid var(--color-border)",
   background: "none", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 10,
 };

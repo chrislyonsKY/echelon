@@ -45,6 +45,7 @@ async def export_geojson(
 
     features = []
     for r in rows:
+        payload = r.raw_payload or {}
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [r.lon, r.lat]},
@@ -55,6 +56,11 @@ async def export_geojson(
                 "occurredAt": r.occurred_at.isoformat() if r.occurred_at else None,
                 "weight": r.weight,
                 "sourceId": r.source_id,
+                "language": payload.get("language"),
+                "title": payload.get("title_original") or payload.get("title"),
+                "translatedTitle": payload.get("title_translated"),
+                "description": payload.get("description_original") or payload.get("description"),
+                "translatedDescription": payload.get("description_translated"),
             },
         })
 
@@ -88,8 +94,14 @@ async def export_kml(
 
     placemarks = []
     for r in rows:
-        name = f"{r.signal_type} ({r.source})"
-        desc = f"Weight: {r.weight}<br/>Time: {r.occurred_at.isoformat() if r.occurred_at else 'unknown'}"
+        payload = r.raw_payload or {}
+        title = payload.get("title_translated") or payload.get("title_original") or payload.get("title")
+        name = str(title or f"{r.signal_type} ({r.source})")
+        desc = (
+            f"Weight: {r.weight}<br/>"
+            f"Time: {r.occurred_at.isoformat() if r.occurred_at else 'unknown'}<br/>"
+            f"Language: {payload.get('language') or 'und'}"
+        )
         placemarks.append(f"""    <Placemark>
       <name>{_xml_escape(name)}</name>
       <description>{_xml_escape(desc)}</description>
@@ -126,11 +138,20 @@ async def export_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "source", "signal_type", "lat", "lon", "occurred_at", "weight", "source_id"])
+    writer.writerow([
+        "id", "source", "signal_type", "lat", "lon", "occurred_at", "weight", "source_id",
+        "language", "title", "translated_title", "description", "translated_description",
+    ])
     for r in rows:
+        payload = r.raw_payload or {}
         writer.writerow([
             str(r.id), r.source, r.signal_type, r.lat, r.lon,
             r.occurred_at.isoformat() if r.occurred_at else "", r.weight, r.source_id or "",
+            payload.get("language") or "",
+            payload.get("title_original") or payload.get("title") or "",
+            payload.get("title_translated") or "",
+            payload.get("description_original") or payload.get("description") or "",
+            payload.get("description_translated") or "",
         ])
 
     return Response(

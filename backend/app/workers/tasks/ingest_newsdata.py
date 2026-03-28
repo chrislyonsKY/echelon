@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 from app.services.convergence_scorer import SIGNAL_WEIGHTS
+from app.services.language_support import build_multilingual_text_fields
 from app.services.newsdata import NewsService
 from app.workers.celery_app import celery_app
 
@@ -28,12 +29,14 @@ _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
         source, signal_type, h3_index_5, h3_index_7, h3_index_9,
         location, occurred_at, ingested_at, weight,
-        raw_payload, source_id, dedup_hash
+        raw_payload, source_id, dedup_hash,
+        provenance_family, confirmation_policy
     ) VALUES (
         :source, :signal_type, :h3_index_5, :h3_index_7, :h3_index_9,
         ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326),
         :occurred_at, NOW(), :weight,
-        CAST(:raw_payload AS jsonb), :source_id, :dedup_hash
+        CAST(:raw_payload AS jsonb), :source_id, :dedup_hash,
+        :provenance_family, :confirmation_policy
     )
     ON CONFLICT (dedup_hash) DO NOTHING
 """)
@@ -77,6 +80,11 @@ async def _ingest() -> dict:
     for article in articles:
         lat = article["latitude"]
         lon = article["longitude"]
+        text_fields = build_multilingual_text_fields(
+            title=article.get("title"),
+            description=article.get("description"),
+            language_hint=article.get("language"),
+        )
 
         # Parse pubDate (various formats across providers)
         pub_date = article.get("pubDate", "")
@@ -98,9 +106,12 @@ async def _ingest() -> dict:
                 "url": article.get("url", ""),
                 "source": article.get("source_name", ""),
                 "provider": article.get("provider", ""),
+                **text_fields.as_dict(),
             }).decode(),
             "source_id": article.get("article_id", ""),
             "dedup_hash": service.build_dedup_hash(article),
+            "provenance_family": "news_media",
+            "confirmation_policy": "unverified",
         })
 
     # Bulk insert

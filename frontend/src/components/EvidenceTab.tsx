@@ -14,6 +14,15 @@
 import { useState, useEffect } from "react";
 import { apiClient } from "@/services/api";
 import { format } from "date-fns";
+import {
+  getDisplayDescription,
+  getDisplayTitle,
+  getOriginalDescription,
+  getOriginalTitle,
+  hasTranslation,
+  languageLabel,
+  textDirectionForRecord,
+} from "@/utils/language";
 
 interface EvidenceItem {
   id: string;
@@ -24,8 +33,16 @@ interface EvidenceItem {
   thumbnailUrl: string | null;
   title: string | null;
   description: string | null;
+  titleOriginal: string | null;
+  descriptionOriginal: string | null;
+  titleTranslated: string | null;
+  descriptionTranslated: string | null;
+  displayTitle: string | null;
+  displayDescription: string | null;
   author: string | null;
   language: string | null;
+  textDirection: string | null;
+  translationStatus: string | null;
   publishedAt: string | null;
   attachedAt: string | null;
   provenanceFamily: string | null;
@@ -129,6 +146,13 @@ export default function EvidenceTab({ signalId }: Props) {
           const isRevealed = revealedIds.has(item.id);
           const shouldBlur = isGraphic && graphicPref === "blur" && !isRevealed;
           const shouldHide = isGraphic && graphicPref === "hide" && !isRevealed;
+          const displayTitle = getDisplayTitle(item, "Untitled evidence");
+          const displayDescription = getDisplayDescription(item);
+          const originalTitle = getOriginalTitle(item);
+          const originalDescription = getOriginalDescription(item);
+          const direction = textDirectionForRecord(item);
+          const translated = hasTranslation(item);
+          const showOriginalBlock = translated && ((originalTitle && originalTitle !== displayTitle) || originalDescription);
 
           return (
             <div key={item.id} style={{
@@ -160,7 +184,7 @@ export default function EvidenceTab({ signalId }: Props) {
                 <div style={{ position: "relative", marginBottom: 8 }}>
                   <img
                     src={item.thumbnailUrl}
-                    alt={item.title || "Evidence thumbnail"}
+                    alt={displayTitle}
                     style={{
                       width: "100%", height: 120, objectFit: "cover", borderRadius: 4,
                       filter: shouldBlur ? "blur(20px)" : "none",
@@ -199,9 +223,21 @@ export default function EvidenceTab({ signalId }: Props) {
               )}
 
               {/* Title + metadata */}
-              <div style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4 }}>
-                {item.title || "Untitled evidence"}
+              <div
+                dir={translated ? "ltr" : direction}
+                style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4 }}
+              >
+                {displayTitle}
               </div>
+
+              {displayDescription && (
+                <div
+                  dir={translated ? "ltr" : direction}
+                  style={{ fontSize: 10, color: "var(--color-text-secondary)", lineHeight: 1.5, marginBottom: 6 }}
+                >
+                  {displayDescription}
+                </div>
+              )}
 
               {/* Badges row */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
@@ -241,14 +277,52 @@ export default function EvidenceTab({ signalId }: Props) {
                 {/* Review status */}
                 {item.reviewStatus === "human_approved" && <Badge label="REVIEWED" color="#10b981" />}
                 {item.reviewStatus === "auto_flagged" && <Badge label="AUTO-FLAG" color="#f59e0b" />}
+
+                {/* Translation */}
+                {translated && <Badge label="TRANSLATED" color="#8b5cf6" />}
               </div>
 
               {/* Details */}
               <div style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>
                 {item.author && <span>{item.author} | </span>}
                 {item.publishedAt && <span>{format(new Date(item.publishedAt), "MMM d, yyyy HH:mm")} | </span>}
-                {item.language && <span>{item.language}</span>}
+                {item.language && <span>{languageLabel(item.language)}</span>}
               </div>
+
+              {showOriginalBlock && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 10px",
+                    borderRadius: 4,
+                    background: "rgba(51,65,85,0.22)",
+                    border: "1px solid rgba(71,85,105,0.35)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 600,
+                      color: "var(--color-text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Original ({languageLabel(item.language)})
+                  </div>
+                  {originalTitle && (
+                    <div dir={direction} style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: originalDescription ? 4 : 0 }}>
+                      {originalTitle}
+                    </div>
+                  )}
+                  {originalDescription && (
+                    <div dir={direction} style={{ fontSize: 10, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+                      {originalDescription}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Link — no autoplay */}
               <a

@@ -16,7 +16,17 @@ const PRESETS = [
 ];
 
 export default function TopBar() {
-  const { user, setUser, dateRange, setDateRange, copilotOpen, setCopilotOpen } = useEchelonStore();
+  const {
+    user,
+    setUser,
+    dateRange,
+    setDateRange,
+    copilotOpen,
+    setCopilotOpen,
+    setShowMethodology,
+    theaterMode,
+    setTheaterMode,
+  } = useEchelonStore();
 
   const handleLogout = async () => {
     await authApi.logout();
@@ -113,6 +123,44 @@ export default function TopBar() {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Methodology link */}
+      <button
+        onClick={() => setShowMethodology(true)}
+        style={{
+          padding: "5px 12px",
+          borderRadius: 4,
+          border: "none",
+          background: "transparent",
+          color: "var(--color-text-secondary)",
+          cursor: "pointer",
+          fontSize: 11,
+          fontWeight: 500,
+        }}
+      >
+        Methodology
+      </button>
+
+      <button
+        onClick={() => setTheaterMode(!theaterMode)}
+        aria-pressed={theaterMode}
+        style={{
+          padding: "5px 12px",
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: theaterMode ? "#f59e0b" : "var(--color-border)",
+          background: theaterMode ? "rgba(245,158,11,0.16)" : "transparent",
+          color: theaterMode ? "#fbbf24" : "var(--color-text-secondary)",
+          cursor: "pointer",
+          fontSize: 11,
+          fontWeight: 600,
+          fontFamily: "var(--font-mono)",
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        Theater
+      </button>
 
       {/* Copilot toggle */}
       <button

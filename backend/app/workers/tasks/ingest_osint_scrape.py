@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 from app.services.convergence_scorer import SIGNAL_WEIGHTS
+from app.services.language_support import build_multilingual_text_fields
 from app.services.osint_scraper import OSINTScraperService
 from app.workers.celery_app import celery_app
 
@@ -29,12 +30,14 @@ _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
         source, signal_type, h3_index_5, h3_index_7, h3_index_9,
         location, occurred_at, ingested_at, weight,
-        raw_payload, source_id, dedup_hash
+        raw_payload, source_id, dedup_hash,
+        provenance_family, confirmation_policy
     ) VALUES (
         :source, :signal_type, :h3_index_5, :h3_index_7, :h3_index_9,
         ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326),
         :occurred_at, NOW(), :weight,
-        CAST(:raw_payload AS jsonb), :source_id, :dedup_hash
+        CAST(:raw_payload AS jsonb), :source_id, :dedup_hash,
+        :provenance_family, :confirmation_policy
     )
     ON CONFLICT (dedup_hash) DO NOTHING
 """)
@@ -101,6 +104,11 @@ async def _ingest() -> dict:
         metadata = item.get("metadata", {}) or {}
         provenance_family = _metadata_text(metadata, "provenance_family")
         confirmation_policy = _metadata_text(metadata, "confirmation_policy")
+        text_fields = build_multilingual_text_fields(
+            title=item.get("title"),
+            description=item.get("description"),
+            language_hint=_metadata_text(metadata, "language"),
+        )
 
         raw_payload = orjson.dumps({
             "title": item.get("title", ""),
@@ -110,6 +118,7 @@ async def _ingest() -> dict:
             "source_group": source_group,
             "provenance_family": provenance_family,
             "confirmation_policy": confirmation_policy,
+            **text_fields.as_dict(),
             "metadata": metadata,
         }).decode()
 
@@ -126,6 +135,8 @@ async def _ingest() -> dict:
             "raw_payload": raw_payload,
             "source_id": source_id,
             "dedup_hash": service.build_dedup_hash(item),
+            "provenance_family": provenance_family or "news_media",
+            "confirmation_policy": confirmation_policy or "unverified",
         })
 
     result = await _bulk_insert(rows)

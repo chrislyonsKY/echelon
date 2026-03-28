@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
+from app.services.language_support import build_multilingual_text_fields
 from app.services.moderation import get_moderation_service
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ class EvidenceCreate(BaseModel):
     thumbnail_url: str | None = None
     title: str | None = None
     description: str | None = None
+    title_translated: str | None = None
+    description_translated: str | None = None
     author: str | None = None
     language: str | None = None
     published_at: str | None = None
@@ -63,7 +66,10 @@ async def get_evidence_for_signal(
     result = await session.execute(
         text(f"""
             SELECT id, signal_id, type, url, platform, thumbnail_url, title,
-                   description, author, language, published_at, attached_at,
+                   description, title_original, description_original,
+                   title_translated, description_translated,
+                   author, language, text_direction, translation_status,
+                   published_at, attached_at,
                    provenance_family, confirmation_policy,
                    geolocation_status, time_verification_status,
                    graphic_flag, graphic_confidence, graphic_reason,
@@ -120,18 +126,32 @@ async def attach_evidence(
         except ValueError:
             pass
 
+    text_fields = build_multilingual_text_fields(
+        title=body.title,
+        description=body.description,
+        language_hint=body.language,
+        translated_title=body.title_translated,
+        translated_description=body.description_translated,
+    )
+
     await session.execute(
         text("""
             INSERT INTO evidence (
                 id, signal_id, type, url, platform, thumbnail_url, title,
-                description, author, language, published_at, attached_at,
+                description, title_original, description_original,
+                title_translated, description_translated,
+                author, language, text_direction, translation_status,
+                published_at, attached_at,
                 provenance_family, confirmation_policy,
                 geolocation_status, time_verification_status,
                 graphic_flag, graphic_confidence, graphic_reason,
                 review_status, moderation_payload
             ) VALUES (
                 :id, :signal_id, :type, :url, :platform, :thumbnail_url, :title,
-                :description, :author, :language, :published_at, NOW(),
+                :description, :title_original, :description_original,
+                :title_translated, :description_translated,
+                :author, :language, :text_direction, :translation_status,
+                :published_at, NOW(),
                 :provenance_family, :confirmation_policy,
                 :geolocation_status, :time_verification_status,
                 :graphic_flag, :graphic_confidence, :graphic_reason,
@@ -145,10 +165,16 @@ async def attach_evidence(
             "url": body.url,
             "platform": body.platform,
             "thumbnail_url": body.thumbnail_url,
-            "title": body.title,
-            "description": body.description,
+            "title": text_fields.title_original or None,
+            "description": text_fields.description_original or None,
+            "title_original": text_fields.title_original or None,
+            "description_original": text_fields.description_original or None,
+            "title_translated": text_fields.title_translated,
+            "description_translated": text_fields.description_translated,
             "author": body.author,
-            "language": body.language,
+            "language": text_fields.language,
+            "text_direction": text_fields.text_direction,
+            "translation_status": text_fields.translation_status,
             "published_at": published_at,
             "provenance_family": body.provenance_family,
             "confirmation_policy": body.confirmation_policy,
@@ -167,6 +193,8 @@ async def attach_evidence(
         "id": evidence_id,
         "signalId": body.signal_id,
         "type": body.type,
+        "language": text_fields.language,
+        "translationStatus": text_fields.translation_status,
         "reviewStatus": mod_result.review_status,
         "graphicFlag": mod_result.graphic_flag,
     }
@@ -218,11 +246,14 @@ async def get_pending_review(
     result = await session.execute(
         text("""
             SELECT id, signal_id, type, url, platform, thumbnail_url, title,
-                   description, author, language, published_at, attached_at,
+                   description, title_original, description_original,
+                   title_translated, description_translated,
+                   author, language, text_direction, translation_status,
+                   published_at, attached_at,
                    provenance_family, confirmation_policy,
                    geolocation_status, time_verification_status,
                    graphic_flag, graphic_confidence, graphic_reason,
-                   review_status
+                   review_status, restricted, restricted_reason, content_hash
             FROM evidence
             WHERE review_status IN ('unreviewed', 'auto_flagged')
             ORDER BY attached_at DESC
@@ -235,6 +266,12 @@ async def get_pending_review(
 
 def _row_to_dict(r) -> dict:
     """Convert a DB row to API response dict."""
+    title_original = getattr(r, "title_original", None)
+    description_original = getattr(r, "description_original", None)
+    title_translated = getattr(r, "title_translated", None)
+    description_translated = getattr(r, "description_translated", None)
+    restricted = bool(getattr(r, "restricted", False))
+
     d = {
         "id": str(r.id),
         "signalId": str(r.signal_id),
@@ -244,8 +281,16 @@ def _row_to_dict(r) -> dict:
         "thumbnailUrl": r.thumbnail_url,
         "title": r.title,
         "description": r.description,
+        "titleOriginal": title_original,
+        "descriptionOriginal": description_original,
+        "titleTranslated": title_translated,
+        "descriptionTranslated": description_translated,
+        "displayTitle": title_translated or title_original or r.title,
+        "displayDescription": description_translated or description_original or r.description,
         "author": r.author,
         "language": r.language,
+        "textDirection": r.text_direction,
+        "translationStatus": r.translation_status,
         "publishedAt": r.published_at.isoformat() if r.published_at else None,
         "attachedAt": r.attached_at.isoformat() if r.attached_at else None,
         "provenanceFamily": r.provenance_family,
@@ -256,13 +301,13 @@ def _row_to_dict(r) -> dict:
         "graphicConfidence": r.graphic_confidence,
         "graphicReason": r.graphic_reason,
         "reviewStatus": r.review_status,
-        "restricted": r.restricted,
-        "restrictedReason": r.restricted_reason,
-        "contentHash": r.content_hash,
+        "restricted": restricted,
+        "restrictedReason": getattr(r, "restricted_reason", None),
+        "contentHash": getattr(r, "content_hash", None),
     }
 
     # Restricted content: redact URL and thumbnail from public responses
-    if r.restricted:
+    if restricted:
         d["url"] = "[RESTRICTED — analyst access only]"
         d["thumbnailUrl"] = None
 

@@ -29,12 +29,14 @@ _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
         source, signal_type, h3_index_5, h3_index_7, h3_index_9,
         location, occurred_at, ingested_at, weight,
-        raw_payload, source_id, dedup_hash
+        raw_payload, source_id, dedup_hash,
+        provenance_family, confirmation_policy
     ) VALUES (
         :source, :signal_type, :h3_index_5, :h3_index_7, :h3_index_9,
         ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326),
         :occurred_at, NOW(), :weight,
-        CAST(:raw_payload AS jsonb), :source_id, :dedup_hash
+        CAST(:raw_payload AS jsonb), :source_id, :dedup_hash,
+        :provenance_family, :confirmation_policy
     )
     ON CONFLICT (dedup_hash) DO NOTHING
 """)
@@ -185,6 +187,8 @@ def _build_signal_rows(
             "raw_payload": orjson.dumps(payload, default=str).decode(),
             "source_id": str(event_id),
             "dedup_hash": service.build_dedup_hash(event),
+            "provenance_family": "official_sensor",
+            "confirmation_policy": "verified",
         })
 
     return rows

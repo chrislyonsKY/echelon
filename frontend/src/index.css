@@ -95,6 +95,11 @@ button {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes theaterTicker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
 /* Map tooltip */
 .map-tooltip {
   font-family: "Inter", -apple-system, sans-serif;

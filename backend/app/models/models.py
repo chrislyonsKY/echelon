@@ -26,19 +26,21 @@ class Signal(Base):
 
     __tablename__ = "signals"
 
-    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source       = Column(Text, nullable=False, index=True)
-    signal_type  = Column(Text, nullable=False, index=True)
-    h3_index_5   = Column(Text, nullable=False, index=True)
-    h3_index_7   = Column(Text, nullable=False, index=True)
-    h3_index_9   = Column(Text, nullable=False, index=True)
-    location     = Column(Geography("POINT", srid=4326), nullable=False)
-    occurred_at  = Column(DateTime(timezone=True), nullable=False, index=True)
-    ingested_at  = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    weight       = Column(Float, nullable=False)
-    raw_payload  = Column(JSONB)
-    source_id    = Column(Text)
-    dedup_hash   = Column(Text, unique=True, nullable=False)
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source              = Column(Text, nullable=False, index=True)
+    signal_type         = Column(Text, nullable=False, index=True)
+    h3_index_5          = Column(Text, nullable=False, index=True)
+    h3_index_7          = Column(Text, nullable=False, index=True)
+    h3_index_9          = Column(Text, nullable=False, index=True)
+    location            = Column(Geography("POINT", srid=4326), nullable=False)
+    occurred_at         = Column(DateTime(timezone=True), nullable=False, index=True)
+    ingested_at         = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    weight              = Column(Float, nullable=False)
+    raw_payload         = Column(JSONB)
+    source_id           = Column(Text)
+    dedup_hash          = Column(Text, unique=True, nullable=False)
+    provenance_family   = Column(Text)   # official_sensor, curated_dataset, news_media, open_source, crowd_sourced
+    confirmation_policy = Column(Text)   # verified, corroborated, unverified, context_only
 
     __table_args__ = (
         UniqueConstraint("dedup_hash", name="uq_signals_dedup_hash"),
@@ -108,6 +110,46 @@ class AOI(Base):
     alerts = relationship("Alert", back_populates="aoi", cascade="all, delete-orphan")
 
 
+class Event(Base):
+    """Clustered incident — groups related signals into a single analytical event.
+
+    Events are the analyst-facing unit of work. A signal is raw data;
+    an event is an assessed incident with corroboration from multiple
+    independent source families.
+    """
+
+    __tablename__ = "events"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title               = Column(Text, nullable=False)
+    event_type          = Column(Text, nullable=False, index=True)
+    location            = Column(Geography("POINT", srid=4326), nullable=False)
+    h3_index_7          = Column(Text, nullable=False, index=True)
+    first_seen          = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_seen           = Column(DateTime(timezone=True), nullable=False)
+    source_families     = Column(JSONB, nullable=False, default=list)
+    corroboration_count = Column(Integer, nullable=False, default=1)
+    confirmation_status = Column(Text, nullable=False, default="unconfirmed")
+    # unconfirmed | single_source | multi_source | corroborated
+    signal_count        = Column(Integer, nullable=False, default=0)
+    summary             = Column(Text)
+    created_at          = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at          = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    signals = relationship("EventSignal", back_populates="event", cascade="all, delete-orphan")
+
+
+class EventSignal(Base):
+    """Junction table linking events to their supporting signals."""
+
+    __tablename__ = "event_signals"
+
+    event_id  = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    signal_id = Column(UUID(as_uuid=True), ForeignKey("signals.id", ondelete="CASCADE"), primary_key=True)
+
+    event = relationship("Event", back_populates="signals")
+
+
 class Evidence(Base):
     """Evidence items attached to signal events.
 
@@ -126,8 +168,14 @@ class Evidence(Base):
     thumbnail_url             = Column(Text)
     title                     = Column(Text)
     description               = Column(Text)
+    title_original            = Column(Text)
+    description_original      = Column(Text)
+    title_translated          = Column(Text)
+    description_translated    = Column(Text)
     author                    = Column(Text)
     language                  = Column(Text)
+    text_direction            = Column(Text)
+    translation_status        = Column(Text)
     published_at              = Column(DateTime(timezone=True))
     attached_at               = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
