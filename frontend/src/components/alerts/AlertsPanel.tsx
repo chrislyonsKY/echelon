@@ -8,7 +8,7 @@ import { alertsApi, type AlertRecord, type AOI } from "@/services/api";
 import { format } from "date-fns";
 
 export default function AlertsPanel() {
-  const { alertPanelOpen, user, setViewState } = useEchelonStore();
+  const { alertPanelOpen, user } = useEchelonStore();
   const [tab, setTab] = useState<"alerts" | "watchlists">("alerts");
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [aois, setAois] = useState<AOI[]>([]);
