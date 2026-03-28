@@ -164,6 +164,19 @@ TOOL_MANIFEST = [
             "required": [],
         },
     },
+    {
+        "name": "find_nearby_infrastructure",
+        "description": "Find military airfields and the nearest city to a coordinate. Uses OurAirports (474 military bases globally) and GeoNames (33k+ cities). Useful for contextualizing signals — e.g. 'what's near this AIS gap event'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lat": {"type": "number", "description": "Latitude in decimal degrees."},
+                "lon": {"type": "number", "description": "Longitude in decimal degrees."},
+                "radius_km": {"type": "number", "description": "Search radius in km. Default 200."},
+            },
+            "required": ["lat", "lon"],
+        },
+    },
 ]
 
 
@@ -318,6 +331,8 @@ async def _dispatch_tool(
         return await _tool_news(session, tool_input)
     elif tool_name == "get_signal_summary":
         return await _tool_signal_summary(session)
+    elif tool_name == "find_nearby_infrastructure":
+        return _tool_nearby_infrastructure(tool_input)
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -498,6 +513,24 @@ async def _tool_signal_summary(session: AsyncSession) -> list[dict]:
         }
         for r in result.fetchall()
     ]
+
+
+def _tool_nearby_infrastructure(params: dict) -> dict:
+    """Find military airfields and nearest city to a point."""
+    from app.services.reference_data import find_nearby_airfields, find_nearest_city
+
+    lat = params["lat"]
+    lon = params["lon"]
+    radius = params.get("radius_km", 200)
+
+    city = find_nearest_city(lat, lon, max_km=100)
+    airfields = find_nearby_airfields(lat, lon, max_km=radius)
+
+    return {
+        "nearest_city": city,
+        "military_airfields": airfields[:10],
+        "airfield_count": len(airfields),
+    }
 
 
 def _summarize_payload(payload: dict | None) -> dict:

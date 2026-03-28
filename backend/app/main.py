@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Manage application lifespan — startup and shutdown."""
     logger.info("Echelon API starting up")
-    # TODO: Run startup checks (DB connectivity, Redis ping)
+    from app.services.reference_data import load_reference_data
+    await load_reference_data()
     yield
     logger.info("Echelon API shutting down")
     await engine.dispose()

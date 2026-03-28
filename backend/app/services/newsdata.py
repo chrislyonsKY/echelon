@@ -241,14 +241,24 @@ def _geocode_countries(countries: list | None) -> tuple[float | None, float | No
 
 
 def _geocode_text(text: str) -> tuple[float | None, float | None]:
-    """Geocode by scanning text for country name mentions.
+    """Geocode by scanning text for city/country names.
+
+    Uses GeoNames city-level geocoding first (33k+ cities), falls back
+    to country centroids if no city match.
 
     Args:
         text: Article title + description.
 
     Returns:
-        (lat, lon) of first matching country mention, or (None, None).
+        (lat, lon) or (None, None).
     """
+    # Try city-level geocoding via GeoNames reference data
+    from app.services.reference_data import geocode_text as geo_city
+    lat, lon, _ = geo_city(text)
+    if lat is not None:
+        return lat, lon
+
+    # Fall back to country centroids
     text_lower = text.lower()
     for country, coords in COUNTRY_CENTROIDS.items():
         if country in text_lower:
