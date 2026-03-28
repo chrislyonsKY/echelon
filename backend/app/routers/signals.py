@@ -15,6 +15,39 @@ router = APIRouter()
 _MAX_RESULTS = 500
 
 
+@router.get("/latest")
+async def get_latest_signals(
+    limit: int = Query(default=15, le=50),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """Return the most recent signals globally. Used by the live feed."""
+    result = await session.execute(
+        text("""
+            SELECT id, source, signal_type,
+                   ST_Y(location::geometry) AS lat,
+                   ST_X(location::geometry) AS lon,
+                   occurred_at, weight, raw_payload, source_id
+            FROM signals
+            ORDER BY occurred_at DESC
+            LIMIT :limit
+        """),
+        {"limit": limit},
+    )
+    return [
+        {
+            "id": str(row.id),
+            "source": row.source,
+            "signalType": row.signal_type,
+            "location": {"lat": row.lat, "lng": row.lon},
+            "occurredAt": row.occurred_at.isoformat() if row.occurred_at else None,
+            "weight": row.weight,
+            "rawPayload": row.raw_payload or {},
+            "sourceId": row.source_id,
+        }
+        for row in result.fetchall()
+    ]
+
+
 @router.get("/")
 async def get_signals(
     h3_index: str | None = Query(default=None),

@@ -5,7 +5,7 @@
  */
 import { useState, useEffect } from "react";
 import { useEchelonStore } from "@/store/echelonStore";
-import { signalsApi, type SignalEvent } from "@/services/api";
+import { apiClient, type SignalEvent } from "@/services/api";
 import { format } from "date-fns";
 
 const FEED_REFRESH_MS = 60_000; // 1 minute
@@ -20,26 +20,21 @@ const SOURCE_COLORS: Record<string, string> = {
 };
 
 export default function EventFeed() {
-  const { setViewState, dateRange } = useEchelonStore();
+  const { setViewState } = useEchelonStore();
   const [events, setEvents] = useState<SignalEvent[]>([]);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    const fetch = () => {
-      signalsApi
-        .getForBbox(
-          [-180, -90, 180, 90],
-          "",
-          dateRange.from.toISOString().split("T")[0],
-          dateRange.to.toISOString().split("T")[0]
-        )
-        .then((data) => setEvents(data.slice(0, 15)))
+    const load = () => {
+      apiClient
+        .get<SignalEvent[]>("/signals/latest?limit=15")
+        .then((data) => setEvents(data))
         .catch(() => {});
     };
-    fetch();
-    const interval = setInterval(fetch, FEED_REFRESH_MS);
+    load();
+    const interval = setInterval(load, FEED_REFRESH_MS);
     return () => clearInterval(interval);
-  }, [dateRange]);
+  }, []);
 
   const flyTo = (event: SignalEvent) => {
     setViewState({

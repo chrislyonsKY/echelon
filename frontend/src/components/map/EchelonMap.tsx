@@ -100,31 +100,65 @@ export default function EchelonMap() {
           });
         }}
       >
-        {/* Convergence heatmap as circles */}
+        {/* Convergence heatmap — outer glow */}
         <Source id="convergence" type="geojson" data={tileGeoJSON}>
+          <Layer
+            id="convergence-glow"
+            type="circle"
+            paint={{
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 8, 5, 16, 8, 24, 12, 32],
+              "circle-color": [
+                "interpolate", ["linear"], ["get", "score"],
+                0, "rgba(26,48,80,0)",
+                0.3, "rgba(45,140,240,0.15)",
+                0.5, "rgba(229,164,0,0.2)",
+                1.0, "rgba(251,113,0,0.25)",
+                2.0, "rgba(240,68,68,0.3)",
+                4.0, "rgba(147,51,234,0.35)",
+              ],
+              "circle-blur": 1,
+            }}
+          />
           <Layer
             id="convergence-circles"
             type="circle"
             paint={{
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 4, 5, 8, 8, 14, 12, 20],
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3, 5, 6, 8, 10, 12, 16],
               "circle-color": [
                 "interpolate", ["linear"], ["get", "score"],
-                0, "rgba(26,48,80,0.4)",
-                0.1, "rgba(26,48,80,0.7)",
-                0.3, "rgba(30,58,95,0.9)",
-                0.5, "rgba(229,164,0,0.9)",
-                1.0, "rgba(251,113,0,0.9)",
-                2.0, "rgba(240,68,68,0.9)",
-                4.0, "rgba(147,51,234,0.95)",
+                0, "#1e3a5f",
+                0.2, "#2563eb",
+                0.5, "#eab308",
+                1.0, "#f97316",
+                2.0, "#ef4444",
+                4.0, "#a855f7",
               ],
-              "circle-opacity": 0.85,
-              "circle-blur": 0.3,
+              "circle-opacity": 0.9,
+              "circle-stroke-width": ["interpolate", ["linear"], ["get", "score"], 0, 0, 0.5, 1, 2, 1.5],
+              "circle-stroke-color": "rgba(255,255,255,0.3)",
             }}
           />
         </Source>
 
-        {/* Signal events as smaller dots */}
+        {/* Signal events — with glow */}
         <Source id="signals" type="geojson" data={signalGeoJSON}>
+          <Layer
+            id="signal-glow"
+            type="circle"
+            paint={{
+              "circle-radius": 10,
+              "circle-color": [
+                "match", ["get", "source"],
+                "gdelt", "rgba(240,68,68,0.25)",
+                "gfw", "rgba(45,140,240,0.25)",
+                "newsdata", "rgba(229,164,0,0.25)",
+                "osm", "rgba(0,196,140,0.15)",
+                "opensky", "rgba(6,182,212,0.25)",
+                "rgba(124,141,181,0.15)",
+              ],
+              "circle-blur": 1,
+            }}
+          />
           <Layer
             id="signal-dots"
             type="circle"
@@ -132,16 +166,16 @@ export default function EchelonMap() {
               "circle-radius": 4,
               "circle-color": [
                 "match", ["get", "source"],
-                "gdelt", "#f04444",
-                "gfw", "#2d8cf0",
-                "newsdata", "#e5a400",
-                "osm", "#00c48c",
-                "opensky", "#06b6d4",
-                "#7c8db5",
+                "gdelt", "#f87171",
+                "gfw", "#60a5fa",
+                "newsdata", "#fbbf24",
+                "osm", "#34d399",
+                "opensky", "#22d3ee",
+                "#94a3b8",
               ],
-              "circle-opacity": 0.8,
-              "circle-stroke-width": 1,
-              "circle-stroke-color": "rgba(255,255,255,0.2)",
+              "circle-opacity": 0.95,
+              "circle-stroke-width": 1.5,
+              "circle-stroke-color": "rgba(255,255,255,0.4)",
             }}
           />
         </Source>
