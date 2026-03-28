@@ -27,6 +27,7 @@ SIGNAL_WEIGHTS: dict[str, float] = {
     "newsdata_article":      0.12,
     "gfw_loitering":         0.10,
     "osm_change":            0.08,
+    "opensky_military":      0.20,
 }
 
 # ── Scoring constants ──────────────────────────────────────────────────────────

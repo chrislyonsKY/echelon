@@ -24,6 +24,10 @@ BEAT_SCHEDULE = {
         "task": "app.workers.tasks.ingest_osm.run",
         "schedule": crontab(minute=0, hour=2),  # 2am UTC
     },
+    "ingest-opensky-every-30m": {
+        "task": "app.workers.tasks.ingest_opensky.run",
+        "schedule": crontab(minute="*/30"),
+    },
     "trigger-sentinel2-daily": {
         "task": "app.workers.tasks.ingest_sentinel2.trigger_scene_jobs",
         "schedule": crontab(minute=0, hour=3),  # 3am UTC

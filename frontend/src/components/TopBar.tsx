@@ -4,6 +4,7 @@
 import { useEchelonStore } from "@/store/echelonStore";
 import { authApi } from "@/services/api";
 import { format, subDays } from "date-fns";
+import SearchBar from "./SearchBar";
 
 const PRESETS = [
   { label: "24h",  days: 1 },
@@ -92,6 +93,11 @@ export default function TopBar() {
       }}>
         {format(dateRange.from, "MMM d")} — {format(dateRange.to, "MMM d, yyyy")}
       </span>
+
+      <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
+
+      {/* Search */}
+      <SearchBar />
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

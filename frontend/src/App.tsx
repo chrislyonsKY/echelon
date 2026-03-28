@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import EchelonMap from "@/components/map/EchelonMap";
 import InvestigationSidebar from "@/components/sidebar/InvestigationSidebar";
 import CopilotPanel from "@/components/copilot/CopilotPanel";
+import EventFeed from "@/components/EventFeed";
 import AlertBell from "@/components/alerts/AlertBell";
 import TopBar from "@/components/TopBar";
 import { useEchelonStore } from "@/store/echelonStore";
@@ -40,6 +41,7 @@ export default function App() {
         {sidebarOpen && <InvestigationSidebar />}
         {copilotOpen && <CopilotPanel />}
       </div>
+      <EventFeed />
       <AlertBell />
     </div>
   );

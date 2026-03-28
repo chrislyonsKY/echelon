@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # ── BYOK encryption ───────────────────────────────────────────────────────
     byok_encryption_key: str = ""
 
+    # ── Ollama (self-hosted LLM) ────────────────────────────────────────────────
+    ollama_base_url: str = "http://localhost:11434"
+
     # ── Convergence scorer ────────────────────────────────────────────────────
     convergence_alert_threshold: float = 2.0
     convergence_baseline_days: int = 365
