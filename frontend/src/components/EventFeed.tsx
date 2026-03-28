@@ -17,6 +17,18 @@ const SOURCE_COLORS: Record<string, string> = {
   osm: "#00c48c",
   sentinel2: "#9333ea",
   opensky: "#06b6d4",
+  osint_scrape: "#e5a400",
+  western_wire: "#f04444",
+  iranian_state_media: "#e5a400",
+  aggregator: "#7c8db5",
+  social_unofficial: "#7c8db5",
+};
+
+const PROVENANCE_BADGES: Record<string, { label: string; color: string }> = {
+  wire_confirmed: { label: "WIRE", color: "#00c48c" },
+  western_wire: { label: "WIRE", color: "#00c48c" },
+  context_only: { label: "CTX", color: "#e5a400" },
+  aggregated_context: { label: "AGG", color: "#7c8db5" },
 };
 
 export default function EventFeed() {
@@ -130,8 +142,9 @@ export default function EventFeed() {
                         {event.occurredAt ? format(new Date(event.occurredAt), "HH:mm") : ""}
                       </span>
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {_feedDetail(event)}
+                    <div style={{ fontSize: 10, color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
+                      {_provenanceBadge(event)}
+                      <span>{_feedDetail(event)}</span>
                     </div>
                   </div>
                 </button>
@@ -141,6 +154,31 @@ export default function EventFeed() {
         </div>
       )}
     </div>
+  );
+}
+
+function _provenanceBadge(event: SignalEvent): JSX.Element | null {
+  const policy = event.confirmationPolicy || event.provenanceFamily;
+  if (!policy) return null;
+  const badge = PROVENANCE_BADGES[policy];
+  if (!badge) return null;
+  return (
+    <span
+      title={policy.replace(/_/g, " ")}
+      style={{
+        fontSize: 8,
+        fontWeight: 700,
+        letterSpacing: "0.05em",
+        padding: "1px 4px",
+        borderRadius: 3,
+        background: `${badge.color}22`,
+        color: badge.color,
+        border: `1px solid ${badge.color}44`,
+        flexShrink: 0,
+      }}
+    >
+      {badge.label}
+    </span>
   );
 }
 

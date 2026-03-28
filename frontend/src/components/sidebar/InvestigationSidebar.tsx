@@ -172,11 +172,19 @@ function EventCard({ event, color }: { event: SignalEvent; color: string }) {
   const payload = event.rawPayload || {};
   const title = _getEventTitle(event);
   const detail = _getEventDetail(payload);
+  const provenance = event.confirmationPolicy || event.provenanceFamily;
 
   return (
     <div style={{ padding: "6px 16px 6px 28px", fontSize: 11, lineHeight: 1.5 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>{title}</span>
+        <span style={{ color: "var(--color-text-primary)", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+          {title}
+          {provenance && (
+            <span style={{ fontSize: 8, fontWeight: 700, padding: "1px 4px", borderRadius: 3, background: _provenanceColor(provenance) + "22", color: _provenanceColor(provenance), border: `1px solid ${_provenanceColor(provenance)}44` }}>
+              {_provenanceLabel(provenance)}
+            </span>
+          )}
+        </span>
         <span style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-mono)", fontSize: 10, flexShrink: 0 }}>
           {event.occurredAt ? format(new Date(event.occurredAt), "MMM d HH:mm") : ""}
         </span>
@@ -241,4 +249,24 @@ function _buildNarrative(grouped: Record<string, SignalEvent[]>): string {
   if (parts.length === 0) return "No recent activity in this cell.";
   if (sources.length > 1) return `Multi-source convergence: ${parts.join(", ")}.`;
   return parts.join(", ") + ".";
+}
+
+function _provenanceLabel(policy: string): string {
+  switch (policy) {
+    case "wire_confirmed":
+    case "western_wire": return "WIRE";
+    case "context_only": return "CTX";
+    case "aggregated_context": return "AGG";
+    default: return policy.slice(0, 4).toUpperCase();
+  }
+}
+
+function _provenanceColor(policy: string): string {
+  switch (policy) {
+    case "wire_confirmed":
+    case "western_wire": return "#00c48c";
+    case "context_only": return "#e5a400";
+    case "aggregated_context": return "#7c8db5";
+    default: return "#7c8db5";
+  }
 }

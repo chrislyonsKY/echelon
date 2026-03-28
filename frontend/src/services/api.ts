@@ -87,6 +87,8 @@ export interface SignalEvent {
   weight: number;
   rawPayload: Record<string, unknown>;
   sourceId?: string;
+  provenanceFamily?: string;
+  confirmationPolicy?: string;
 }
 
 export interface AOI {

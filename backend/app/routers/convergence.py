@@ -25,6 +25,7 @@ async def get_convergence_tiles(
     h3_convergence_scores cache table (refreshed every 15 minutes by Celery).
     """
     params: dict = {"resolution": resolution}
+    bbox_filter = ""
 
     if bbox:
         try:
@@ -32,16 +33,31 @@ async def get_convergence_tiles(
         except ValueError:
             raise HTTPException(400, "bbox must be four comma-separated floats: west,south,east,north")
         params.update(west=west, south=south, east=east, north=north)
-
-        # Filter by joining signals table to find cells within bbox
-        # For now, return all cells at the resolution (bbox filtering is a future optimization)
+        # Filter cells whose center falls within the viewport bbox.
+        # h3_convergence_scores stores an h3_index string; we join signals
+        # to filter spatially, but a faster approach is to use h3 cell
+        # center coordinates stored during scoring. For now, filter via
+        # the signals table to find which cells have signals in the bbox.
+        bbox_filter = """
+            AND h3_index IN (
+                SELECT DISTINCT h3_index_5 FROM signals
+                WHERE ST_Intersects(location, ST_MakeEnvelope(:west, :south, :east, :north, 4326))
+                UNION
+                SELECT DISTINCT h3_index_7 FROM signals
+                WHERE ST_Intersects(location, ST_MakeEnvelope(:west, :south, :east, :north, 4326))
+                UNION
+                SELECT DISTINCT h3_index_9 FROM signals
+                WHERE ST_Intersects(location, ST_MakeEnvelope(:west, :south, :east, :north, 4326))
+            )
+        """
 
     result = await session.execute(
-        text("""
+        text(f"""
             SELECT h3_index, resolution, z_score, raw_score,
                    signal_breakdown, low_confidence, computed_at
             FROM h3_convergence_scores
             WHERE resolution = :resolution AND raw_score > 0.01
+            {bbox_filter}
             ORDER BY raw_score DESC
             LIMIT 3000
         """),

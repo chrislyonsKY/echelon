@@ -179,8 +179,40 @@ export const useEchelonStore = create<EchelonState>()(
 
     setDateRange: (from, to) => set({ dateRange: { from, to } }),
 
-    applyMapAction: (_action) => {
-      // TODO: implement — fly map to coordinates, highlight cells, toggle layers
+    applyMapAction: (action) => {
+      set((state) => {
+        const updates: Partial<EchelonState> = {};
+
+        if (action.type === "fly_to" && action.center) {
+          updates.viewState = {
+            ...state.viewState,
+            longitude: action.center[0],
+            latitude: action.center[1],
+            zoom: action.zoom ?? state.viewState.zoom ?? 8,
+          };
+        }
+
+        if (action.type === "set_layers" && action.activeLayers) {
+          updates.layerVisibility = {
+            ...state.layerVisibility,
+            ...action.activeLayers,
+          };
+        }
+
+        if (action.type === "highlight_cells" && action.highlightCells?.length) {
+          // Select the first highlighted cell for investigation
+          const h3Index = action.highlightCells[0];
+          updates.selectedCell = {
+            h3Index,
+            resolution: 7,
+            zScore: 0,
+            center: action.center ?? [state.viewState.longitude ?? 0, state.viewState.latitude ?? 20],
+          };
+          updates.sidebarOpen = true;
+        }
+
+        return updates;
+      });
     },
 
     addCopilotMessage: (message) =>

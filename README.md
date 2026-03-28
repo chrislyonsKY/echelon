@@ -170,9 +170,9 @@ z_score(cell)   = (raw_score - μ) / max(σ, 0.001)
 ```
 
 - **H3 resolutions:** 5 (global ~252km²) → 7 (regional ~5km²) → 9 (tactical ~0.1km²)
-- **Baseline:** 365-day rolling statistics per cell
-- **Low confidence:** cells with < 30 observations flagged
+- **Baseline:** warm-start incremental — μ and σ are updated with each scoring cycle. Z-scores become meaningful after ~30 observations per cell (typically 1–2 weeks of ingestion). Cells below this threshold are flagged `low_confidence`.
 - **Recomputed** every 15 minutes
+- **Data retention:** signals older than 365 days are trimmed daily; baseline statistics are preserved independently
 
 ## Security
 
