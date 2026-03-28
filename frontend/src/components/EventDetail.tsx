@@ -146,12 +146,12 @@ export default function EventDetail() {
           {(event.provenanceFamily || event.confirmationPolicy) && (
             <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--color-border)", display: "flex", gap: 6 }}>
               {event.provenanceFamily && (
-                <Badge label={event.provenanceFamily.replace(/_/g, " ")} color="#2d8cf0" />
+                <Badge label={event.provenanceFamily.replace(/_/g, " ")} color="#3b82f6" />
               )}
               {event.confirmationPolicy && (
                 <Badge label={event.confirmationPolicy.replace(/_/g, " ")} color={
-                  event.confirmationPolicy === "wire_confirmed" ? "#00c48c" :
-                  event.confirmationPolicy === "context_only" ? "#e5a400" : "#7c8db5"
+                  event.confirmationPolicy === "wire_confirmed" ? "#10b981" :
+                  event.confirmationPolicy === "context_only" ? "#f59e0b" : "#94a3b8"
                 } />
               )}
             </div>
@@ -187,14 +187,14 @@ export default function EventDetail() {
               {event.relatedSignals.map((r) => (
                 <button key={r.id} onClick={() => loadEvent(r.id)} style={{
                   display: "flex", gap: 8, padding: "6px 0", width: "100%",
-                  background: "none", border: "none", borderBottom: "1px solid rgba(30,45,70,0.3)",
+                  background: "none", border: "none", borderBottom: "1px solid rgba(51,65,85,0.3)",
                   color: "var(--color-text-primary)", cursor: "pointer", textAlign: "left", fontSize: 11,
                 }}>
                   <SourceDot source={r.source} />
                   <div style={{ flex: 1 }}>
                     <span style={{ fontWeight: 500 }}>{r.signalType.replace(/_/g, " ")}</span>
                     {r.provenanceFamily && (
-                      <span style={{ marginLeft: 4, fontSize: 8, padding: "1px 3px", borderRadius: 3, background: "rgba(45,140,240,0.15)", color: "#60a5fa" }}>
+                      <span style={{ marginLeft: 4, fontSize: 8, padding: "1px 3px", borderRadius: 3, background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
                         {r.provenanceFamily.replace(/_/g, " ")}
                       </span>
                     )}
@@ -240,20 +240,20 @@ function Badge({ label, color }: { label: string; color: string }) {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  gdelt: "#f04444", gfw: "#2d8cf0", newsdata: "#e5a400",
-  osm: "#00c48c", opensky: "#06b6d4", osint_scrape: "#e5a400",
+  gdelt: "#ef4444", gfw: "#3b82f6", newsdata: "#f59e0b",
+  osm: "#10b981", opensky: "#06b6d4", osint_scrape: "#f59e0b",
 };
 
 function SourceDot({ source }: { source: string }) {
   return (
     <span style={{
       width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginTop: 5,
-      background: SOURCE_COLORS[source] || "#7c8db5",
+      background: SOURCE_COLORS[source] || "#94a3b8",
     }} />
   );
 }
 
 const btnStyle: React.CSSProperties = {
   padding: "3px 8px", borderRadius: 4, border: "1px solid var(--color-border)",
-  background: "none", color: "var(--color-text-muted)", cursor: "pointer", fontSize: 10,
+  background: "none", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 10,
 };

@@ -11,24 +11,24 @@ import { format } from "date-fns";
 const FEED_REFRESH_MS = 60_000; // 1 minute
 
 const SOURCE_COLORS: Record<string, string> = {
-  gdelt: "#f04444",
-  gfw: "#2d8cf0",
-  newsdata: "#e5a400",
-  osm: "#00c48c",
+  gdelt: "#ef4444",
+  gfw: "#3b82f6",
+  newsdata: "#f59e0b",
+  osm: "#10b981",
   sentinel2: "#9333ea",
   opensky: "#06b6d4",
-  osint_scrape: "#e5a400",
-  western_wire: "#f04444",
-  iranian_state_media: "#e5a400",
-  aggregator: "#7c8db5",
-  social_unofficial: "#7c8db5",
+  osint_scrape: "#f59e0b",
+  western_wire: "#ef4444",
+  iranian_state_media: "#f59e0b",
+  aggregator: "#94a3b8",
+  social_unofficial: "#94a3b8",
 };
 
 const PROVENANCE_BADGES: Record<string, { label: string; color: string }> = {
-  wire_confirmed: { label: "WIRE", color: "#00c48c" },
-  western_wire: { label: "WIRE", color: "#00c48c" },
-  context_only: { label: "CTX", color: "#e5a400" },
-  aggregated_context: { label: "AGG", color: "#7c8db5" },
+  wire_confirmed: { label: "WIRE", color: "#10b981" },
+  western_wire: { label: "WIRE", color: "#10b981" },
+  context_only: { label: "CTX", color: "#f59e0b" },
+  aggregated_context: { label: "AGG", color: "#94a3b8" },
 };
 
 export default function EventFeed() {
@@ -112,7 +112,7 @@ export default function EventFeed() {
             </div>
           ) : (
             events.map((event) => {
-              const color = SOURCE_COLORS[event.source] || "#7c8db5";
+              const color = SOURCE_COLORS[event.source] || "#94a3b8";
               return (
                 <button
                   key={event.id}
@@ -123,7 +123,7 @@ export default function EventFeed() {
                     padding: "6px 12px",
                     background: "none",
                     border: "none",
-                    borderBottom: "1px solid rgba(30,45,70,0.5)",
+                    borderBottom: "1px solid rgba(51,65,85,0.5)",
                     color: "var(--color-text-primary)",
                     cursor: "pointer",
                     width: "100%",

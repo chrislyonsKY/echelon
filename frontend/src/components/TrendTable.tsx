@@ -151,7 +151,7 @@ export default function TrendTable() {
                 const trend = TREND_ICONS[t.trend] || TREND_ICONS.stable;
                 return (
                   <tr key={t.signalType} style={{
-                    borderBottom: "1px solid rgba(30,45,70,0.3)",
+                    borderBottom: "1px solid rgba(51,65,85,0.3)",
                     opacity: t.lowBaseline ? 0.5 : 1,
                   }}>
                     <td style={tdStyle}>

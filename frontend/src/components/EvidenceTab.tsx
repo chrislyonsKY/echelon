@@ -44,17 +44,17 @@ interface EvidenceItem {
 type GraphicPref = "hide" | "blur" | "show";
 
 const PROVENANCE_BADGES: Record<string, { label: string; color: string }> = {
-  official: { label: "OFFICIAL", color: "#00c48c" },
-  ugc: { label: "UGC", color: "#e5a400" },
-  aggregator: { label: "AGG", color: "#7c8db5" },
+  official: { label: "OFFICIAL", color: "#10b981" },
+  ugc: { label: "UGC", color: "#f59e0b" },
+  aggregator: { label: "AGG", color: "#94a3b8" },
   context_only: { label: "CTX", color: "#94a3b8" },
 };
 
 const STATUS_BADGES: Record<string, { label: string; color: string }> = {
-  geolocated: { label: "GEO", color: "#2d8cf0" },
-  verified: { label: "TIME-OK", color: "#00c48c" },
+  geolocated: { label: "GEO", color: "#3b82f6" },
+  verified: { label: "TIME-OK", color: "#10b981" },
   unverified: { label: "UNVERIFIED", color: "#94a3b8" },
-  disputed: { label: "DISPUTED", color: "#f04444" },
+  disputed: { label: "DISPUTED", color: "#ef4444" },
 };
 
 interface Props {
@@ -132,7 +132,7 @@ export default function EvidenceTab({ signalId }: Props) {
 
           return (
             <div key={item.id} style={{
-              padding: "10px 16px", borderBottom: "1px solid rgba(30,45,70,0.3)",
+              padding: "10px 16px", borderBottom: "1px solid rgba(51,65,85,0.3)",
             }}>
               {/* Restricted content — non-dismissable warning */}
               {item.restricted && (
@@ -206,10 +206,10 @@ export default function EvidenceTab({ signalId }: Props) {
               {/* Badges row */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
                 {/* Type badge */}
-                <Badge label={item.type.toUpperCase()} color="#2d8cf0" />
+                <Badge label={item.type.toUpperCase()} color="#3b82f6" />
 
                 {/* Platform */}
-                {item.platform && <Badge label={item.platform} color="#7c8db5" />}
+                {item.platform && <Badge label={item.platform} color="#94a3b8" />}
 
                 {/* Provenance */}
                 {item.provenanceFamily && PROVENANCE_BADGES[item.provenanceFamily] && (
@@ -221,26 +221,26 @@ export default function EvidenceTab({ signalId }: Props) {
                   <Badge {...STATUS_BADGES[item.geolocationStatus]} />
                 )}
                 {item.geolocationStatus === "geolocated" && (
-                  <Badge label="GEO" color="#2d8cf0" />
+                  <Badge label="GEO" color="#3b82f6" />
                 )}
 
                 {/* Time verification */}
                 {item.timeVerificationStatus !== "unverified" && (
                   <Badge
                     label={item.timeVerificationStatus === "verified" ? "TIME-OK" : "TIME-?"}
-                    color={item.timeVerificationStatus === "verified" ? "#00c48c" : "#e5a400"}
+                    color={item.timeVerificationStatus === "verified" ? "#10b981" : "#f59e0b"}
                   />
                 )}
 
                 {/* Restricted flag — perpetrator/terrorist content */}
-                {item.restricted && <Badge label="RESTRICTED" color="#f04444" />}
+                {item.restricted && <Badge label="RESTRICTED" color="#ef4444" />}
 
                 {/* Graphic flag */}
-                {isGraphic && !item.restricted && <Badge label="GRAPHIC" color="#f04444" />}
+                {isGraphic && !item.restricted && <Badge label="GRAPHIC" color="#ef4444" />}
 
                 {/* Review status */}
-                {item.reviewStatus === "human_approved" && <Badge label="REVIEWED" color="#00c48c" />}
-                {item.reviewStatus === "auto_flagged" && <Badge label="AUTO-FLAG" color="#e5a400" />}
+                {item.reviewStatus === "human_approved" && <Badge label="REVIEWED" color="#10b981" />}
+                {item.reviewStatus === "auto_flagged" && <Badge label="AUTO-FLAG" color="#f59e0b" />}
               </div>
 
               {/* Details */}

@@ -152,7 +152,7 @@ export default function TopBar() {
               borderRadius: 4,
               border: "1px solid var(--color-border)",
               background: "transparent",
-              color: "var(--color-text-muted)",
+              color: "var(--color-text-secondary)",
               cursor: "pointer",
               fontSize: 11,
             }}

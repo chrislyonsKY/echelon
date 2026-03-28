@@ -13,10 +13,10 @@ import { format } from "date-fns";
 import LayerPanel from "./LayerPanel";
 
 const SOURCE_META: Record<string, { label: string; color: string; icon: string }> = {
-  gdelt:    { label: "GDELT",              color: "#f04444", icon: "!" },
-  gfw:      { label: "Global Fishing Watch", color: "#2d8cf0", icon: "~" },
-  newsdata: { label: "News",              color: "#e5a400", icon: "#" },
-  osm:      { label: "Infrastructure",    color: "#00c48c", icon: "+" },
+  gdelt:    { label: "GDELT",              color: "#ef4444", icon: "!" },
+  gfw:      { label: "Global Fishing Watch", color: "#3b82f6", icon: "~" },
+  newsdata: { label: "News",              color: "#f59e0b", icon: "#" },
+  osm:      { label: "Infrastructure",    color: "#10b981", icon: "+" },
   sentinel2:{ label: "Sentinel-2",        color: "#9333ea", icon: "*" },
   opensky:  { label: "Air Traffic",       color: "#06b6d4", icon: "^" },
 };
@@ -138,7 +138,7 @@ export default function InvestigationSidebar() {
 
             {/* Event cards by source */}
             {Object.entries(grouped).map(([source, sourceEvents]) => {
-              const meta = SOURCE_META[source] || { label: source, color: "#7c8db5", icon: "?" };
+              const meta = SOURCE_META[source] || { label: source, color: "#94a3b8", icon: "?" };
               return (
                 <div key={source} style={{ borderBottom: "1px solid var(--color-border)" }}>
                   <div style={{ padding: "10px 16px 6px", display: "flex", alignItems: "center", gap: 6 }}>
@@ -264,9 +264,9 @@ function _provenanceLabel(policy: string): string {
 function _provenanceColor(policy: string): string {
   switch (policy) {
     case "wire_confirmed":
-    case "western_wire": return "#00c48c";
-    case "context_only": return "#e5a400";
-    case "aggregated_context": return "#7c8db5";
-    default: return "#7c8db5";
+    case "western_wire": return "#10b981";
+    case "context_only": return "#f59e0b";
+    case "aggregated_context": return "#94a3b8";
+    default: return "#94a3b8";
   }
 }

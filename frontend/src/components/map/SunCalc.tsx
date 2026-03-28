@@ -121,7 +121,7 @@ export default function SunCalcTool({ mapRef }: Props) {
       {active && pin && sunPos && (
         <div style={{
           marginTop: 4, padding: "10px 12px", borderRadius: 6,
-          background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
+          background: "rgba(17,24,39,0.92)", border: "1px solid var(--color-border)",
           backdropFilter: "blur(8px)", minWidth: 200,
         }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>

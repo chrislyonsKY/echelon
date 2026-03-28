@@ -41,7 +41,7 @@ export default function TimelineScrubber() {
     }}>
       {expanded && (
         <div style={{
-          background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
+          background: "rgba(17,24,39,0.92)", border: "1px solid var(--color-border)",
           borderRadius: 8, padding: "8px 16px", backdropFilter: "blur(8px)",
           display: "flex", alignItems: "center", gap: 12, minWidth: 360,
         }}>
@@ -79,7 +79,7 @@ export default function TimelineScrubber() {
         style={{
           padding: "4px 12px", borderRadius: 12,
           border: "1px solid var(--color-border)",
-          background: "rgba(13,19,32,0.85)", cursor: "pointer",
+          background: "rgba(17,24,39,0.85)", cursor: "pointer",
           fontSize: 9, color: "var(--color-text-muted)",
           fontFamily: "var(--font-mono)", backdropFilter: "blur(8px)",
         }}

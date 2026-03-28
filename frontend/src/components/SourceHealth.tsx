@@ -28,9 +28,9 @@ interface HealthSummary {
 }
 
 const STATUS_COLORS = {
-  healthy: "#00c48c",
-  degraded: "#e5a400",
-  inactive: "#f04444",
+  healthy: "#10b981",
+  degraded: "#f59e0b",
+  inactive: "#ef4444",
 };
 
 export default function SourceHealth() {
@@ -102,7 +102,7 @@ export default function SourceHealth() {
           {/* Source list */}
           {sources.map((src) => (
             <div key={src.key} style={{
-              padding: "8px 14px", borderBottom: "1px solid rgba(30,45,70,0.3)",
+              padding: "8px 14px", borderBottom: "1px solid rgba(51,65,85,0.3)",
               display: "flex", alignItems: "center", gap: 8,
             }}>
               <span style={{

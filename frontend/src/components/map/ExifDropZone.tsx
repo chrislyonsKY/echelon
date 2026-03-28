@@ -80,7 +80,7 @@ export default function ExifDropZone() {
         }}>
           <div style={{
             padding: "16px 24px", borderRadius: 8,
-            background: "rgba(13,19,32,0.95)", border: "1px solid var(--color-accent)",
+            background: "rgba(17,24,39,0.95)", border: "1px solid var(--color-accent)",
             fontSize: 14, fontWeight: 600, color: "var(--color-accent)",
           }}>
             Drop image to extract EXIF location

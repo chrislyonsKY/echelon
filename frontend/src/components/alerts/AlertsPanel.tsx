@@ -91,7 +91,7 @@ export default function AlertsPanel() {
           ))}
         </div>
         <button onClick={() => useEchelonStore.setState({ alertPanelOpen: false })} style={{
-          background: "none", border: "none", color: "var(--color-text-muted)", cursor: "pointer", fontSize: 16,
+          background: "none", border: "none", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 16,
         }}>
           x
         </button>

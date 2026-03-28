@@ -162,7 +162,7 @@ export default function MeasureTools({ mapRef }: Props) {
       {mode !== "off" && points.length > 0 && (
         <div style={{
           padding: "6px 10px", borderRadius: 6,
-          background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
+          background: "rgba(17,24,39,0.92)", border: "1px solid var(--color-border)",
           backdropFilter: "blur(8px)", fontSize: 11, minWidth: 160,
         }}>
           <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "#f59e0b" }}>
@@ -186,7 +186,7 @@ export default function MeasureTools({ mapRef }: Props) {
         <div style={{
           position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
           padding: "3px 10px", borderRadius: 4, fontSize: 9,
-          background: "rgba(13,19,32,0.8)", color: "var(--color-text-muted)",
+          background: "rgba(17,24,39,0.8)", color: "var(--color-text-muted)",
           fontFamily: "var(--font-mono)",
         }}>
           {cursor.lat.toFixed(5)}, {cursor.lng.toFixed(5)}

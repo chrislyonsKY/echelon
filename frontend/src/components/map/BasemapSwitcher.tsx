@@ -62,7 +62,7 @@ export default function BasemapSwitcher() {
           background: current.preview,
           boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 8, fontWeight: 700, color: current.id === "dark" ? "#7c8db5" : "#333",
+          fontSize: 8, fontWeight: 700, color: current.id === "dark" ? "#94a3b8" : "#333",
           textTransform: "uppercase", letterSpacing: "0.05em",
         }}
       >
@@ -90,7 +90,7 @@ export default function BasemapSwitcher() {
               }}
             >
               <span style={{
-                fontSize: 7, fontWeight: 700, color: bm.id === "dark" ? "#7c8db5" : "#333",
+                fontSize: 7, fontWeight: 700, color: bm.id === "dark" ? "#94a3b8" : "#333",
                 textTransform: "uppercase",
               }}>
                 {bm.label}

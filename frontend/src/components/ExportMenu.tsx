@@ -29,7 +29,7 @@ export default function ExportMenu() {
         style={{
           padding: "4px 10px", borderRadius: 4, border: "none",
           background: "none", cursor: "pointer",
-          fontSize: 11, fontWeight: 500, color: "var(--color-text-muted)",
+          fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)",
         }}
       >
         Export

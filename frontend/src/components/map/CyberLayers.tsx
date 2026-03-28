@@ -28,11 +28,11 @@ interface CyberLayer {
 }
 
 const LAYERS: CyberLayer[] = [
-  { id: "submarine-cables", label: "Submarine Cables", color: "#2d8cf0", free: true, description: "TeleGeography cable landing points" },
+  { id: "submarine-cables", label: "Submarine Cables", color: "#3b82f6", free: true, description: "TeleGeography cable landing points" },
   { id: "data-centers", label: "Data Centers", color: "#9333ea", free: true, description: "PeeringDB colocation facilities" },
-  { id: "shodan", label: "Shodan Devices", color: "#f04444", free: false, description: "Exposed IoT/servers (BYOK)" },
-  { id: "wigle-wifi", label: "WiFi Networks", color: "#00c48c", free: false, description: "WiGLE WiFi mapping (BYOK)" },
-  { id: "wigle-cells", label: "Cell Towers", color: "#e5a400", free: false, description: "WiGLE cell towers (BYOK)" },
+  { id: "shodan", label: "Shodan Devices", color: "#ef4444", free: false, description: "Exposed IoT/servers (BYOK)" },
+  { id: "wigle-wifi", label: "WiFi Networks", color: "#10b981", free: false, description: "WiGLE WiFi mapping (BYOK)" },
+  { id: "wigle-cells", label: "Cell Towers", color: "#f59e0b", free: false, description: "WiGLE cell towers (BYOK)" },
 ];
 
 interface Props {
@@ -124,7 +124,7 @@ export default function CyberLayers({ mapRef }: Props) {
       {open && (
         <div style={{
           marginTop: 4, padding: 8, borderRadius: 6, minWidth: 220,
-          background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
+          background: "rgba(17,24,39,0.92)", border: "1px solid var(--color-border)",
           backdropFilter: "blur(8px)", boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
         }}>
           <div style={{ fontSize: 9, color: "var(--color-text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
@@ -170,7 +170,7 @@ export default function CyberLayers({ mapRef }: Props) {
           position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)",
           padding: "8px 16px", borderRadius: 6, maxWidth: 400, zIndex: 50,
           background: "rgba(229,164,0,0.15)", border: "1px solid rgba(229,164,0,0.3)",
-          fontSize: 10, color: "#e5a400", textAlign: "center",
+          fontSize: 10, color: "#f59e0b", textAlign: "center",
         }}>
           {warning}
         </div>

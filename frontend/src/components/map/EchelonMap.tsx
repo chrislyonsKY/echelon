@@ -262,9 +262,9 @@ function ConvergenceLegend() {
       </div>
       {[
         { label: "Baseline", color: "#1a3050" },
-        { label: "Elevated", color: "#e5a400" },
+        { label: "Elevated", color: "#f59e0b" },
         { label: "High", color: "#fb7100" },
-        { label: "Alert", color: "#f04444" },
+        { label: "Alert", color: "#ef4444" },
         { label: "Extreme", color: "#9333ea" },
       ].map(({ label, color }) => (
         <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
@@ -287,10 +287,10 @@ function SignalLegend() {
         Signals
       </div>
       {[
-        { label: "Conflict", color: "#f04444" },
-        { label: "Maritime", color: "#2d8cf0" },
-        { label: "News", color: "#e5a400" },
-        { label: "Infrastructure", color: "#00c48c" },
+        { label: "Conflict", color: "#ef4444" },
+        { label: "Maritime", color: "#3b82f6" },
+        { label: "News", color: "#f59e0b" },
+        { label: "Infrastructure", color: "#10b981" },
         { label: "Aviation", color: "#06b6d4" },
       ].map(({ label, color }) => (
         <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
