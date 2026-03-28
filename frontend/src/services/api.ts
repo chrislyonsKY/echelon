@@ -117,6 +117,7 @@ export interface CopilotRequest {
     dateRange: { from: string; to: string };
     selectedCell?: string;
   };
+  provider?: "anthropic" | "openai" | "google" | "ollama";
 }
 
 export interface CopilotResponse {
@@ -166,7 +167,9 @@ export const signalsApi = {
 
 export const copilotApi = {
   chat: (request: CopilotRequest, byokKey: string) =>
-    apiClient.post<CopilotResponse>("/copilot/chat", request, { byokKey }),
+    apiClient.post<CopilotResponse>("/copilot/chat", request, {
+      headers: { "X-LLM-Key": byokKey, "X-Anthropic-Key": byokKey } as Record<string, string>,
+    }),
 };
 
 // ── Alerts API ────────────────────────────────────────────────────────────────

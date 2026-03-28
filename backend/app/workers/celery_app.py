@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.workers.tasks.ingest_newsdata",
         "app.workers.tasks.ingest_osm",
         "app.workers.tasks.ingest_opensky",
+        "app.workers.tasks.ingest_osint_scrape",
         "app.workers.tasks.ingest_sentinel2",
         "app.workers.tasks.convergence",
         "app.workers.tasks.alerts",

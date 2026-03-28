@@ -28,6 +28,7 @@ SIGNAL_WEIGHTS: dict[str, float] = {
     "gfw_loitering":         0.10,
     "osm_change":            0.08,
     "opensky_military":      0.20,
+    "osint_scrape":          0.12,
 }
 
 # ── Scoring constants ──────────────────────────────────────────────────────────

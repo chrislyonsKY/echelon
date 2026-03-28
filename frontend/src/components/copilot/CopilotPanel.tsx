@@ -31,6 +31,7 @@ export default function CopilotPanel() {
   const [isThinking, setIsThinking] = useState(false);
   const [showKeyPrompt, setShowKeyPrompt] = useState(!byokKey);
   const [keyInput, setKeyInput] = useState("");
+  const [provider, setProvider] = useState<"anthropic" | "openai" | "google" | "ollama">("anthropic");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,8 +39,13 @@ export default function CopilotPanel() {
   }, [copilotMessages, isThinking]);
 
   const handleSaveKey = useCallback(() => {
-    if (keyInput.trim().startsWith("sk-ant-")) {
-      setByokKey(keyInput.trim());
+    const key = keyInput.trim();
+    if (key.length > 10) {
+      // Auto-detect provider from key format
+      if (key.startsWith("sk-ant-")) setProvider("anthropic");
+      else if (key.startsWith("sk-")) setProvider("openai");
+      else if (key.startsWith("AI")) setProvider("google");
+      setByokKey(key);
       setShowKeyPrompt(false);
       setKeyInput("");
     }
@@ -66,6 +72,7 @@ export default function CopilotPanel() {
             role: m.role,
             content: m.content,
           })),
+          provider,
           mapContext: {
             viewport: {
               center: [viewState.longitude ?? 0, viewState.latitude ?? 20],
@@ -130,7 +137,7 @@ export default function CopilotPanel() {
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Echelon Copilot</div>
-          <div style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>BYOK — Claude claude-sonnet-4-6</div>
+          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "capitalize" }}>BYOK — {provider}</div>
         </div>
         <button
           onClick={() => setCopilotOpen(false)}
@@ -144,24 +151,35 @@ export default function CopilotPanel() {
       {/* BYOK key prompt */}
       {showKeyPrompt && (
         <div style={{ padding: 16, borderBottom: "1px solid var(--color-border)", background: "var(--color-surface-raised)" }}>
-          <div style={{ fontSize: 12, color: "var(--color-text-primary)", marginBottom: 8, fontWeight: 600 }}>Enter your Anthropic API key</div>
+          <div style={{ fontSize: 12, color: "var(--color-text-primary)", marginBottom: 6, fontWeight: 600 }}>Connect your AI provider</div>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 10 }}>
-            Your key is stored in your browser only and never sent to our server except as a request header when you send messages.
+            Your key stays in your browser. It's sent as a header only when you chat.
+          </div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+            {(["anthropic", "openai", "google", "ollama"] as const).map((p) => (
+              <button key={p} onClick={() => setProvider(p)} style={{
+                padding: "3px 8px", borderRadius: 4, fontSize: 10, fontWeight: 500, cursor: "pointer",
+                border: "1px solid", textTransform: "capitalize",
+                borderColor: provider === p ? "var(--color-accent)" : "var(--color-border)",
+                background: provider === p ? "var(--color-accent-muted)" : "transparent",
+                color: provider === p ? "var(--color-accent)" : "var(--color-text-muted)",
+              }}>{p}</button>
+            ))}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               type="password"
-              placeholder="sk-ant-..."
+              placeholder={provider === "ollama" ? "No key needed — click Save" : `${provider} API key...`}
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSaveKey()}
-              aria-label="Anthropic API key"
+              aria-label="API key"
               style={{ flex: 1, background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: 6, padding: "6px 10px", color: "var(--color-text-primary)", fontSize: 12 }}
             />
             <button
-              onClick={handleSaveKey}
-              disabled={!keyInput.trim().startsWith("sk-ant-")}
-              style={{ background: "var(--color-accent)", border: "none", borderRadius: 6, padding: "6px 12px", color: "#fff", cursor: "pointer", fontSize: 12 }}
+              onClick={() => { if (provider === "ollama") { setByokKey("ollama"); setShowKeyPrompt(false); } else handleSaveKey(); }}
+              disabled={provider !== "ollama" && keyInput.trim().length < 10}
+              style={{ background: "var(--color-accent)", border: "none", borderRadius: 6, padding: "6px 12px", color: "#fff", cursor: "pointer", fontSize: 12, opacity: (provider !== "ollama" && keyInput.trim().length < 10) ? 0.5 : 1 }}
             >
               Save
             </button>
