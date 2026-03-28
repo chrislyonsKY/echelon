@@ -49,15 +49,22 @@ async def get_source_health(
     r = _get_redis()
 
     # Get signal counts per source from DB
+    # Aggregate OSINT sub-sources (western_wire, aggregator, etc.) under osint_scrape
     count_result = await session.execute(text("""
-        SELECT source,
-               COUNT(*) FILTER (WHERE occurred_at >= NOW() - INTERVAL '24 hours') AS count_24h,
-               COUNT(*) FILTER (WHERE occurred_at >= NOW() - INTERVAL '7 days') AS count_7d,
-               MAX(occurred_at) AS last_signal_at
+        SELECT
+            CASE
+                WHEN source IN ('western_wire', 'iranian_state_media', 'aggregator',
+                                'social_unofficial', 'html_rusi', 'html_janes')
+                THEN 'osint_scrape'
+                ELSE source
+            END AS source_key,
+            COUNT(*) FILTER (WHERE occurred_at >= NOW() - INTERVAL '24 hours') AS count_24h,
+            COUNT(*) FILTER (WHERE occurred_at >= NOW() - INTERVAL '7 days') AS count_7d,
+            MAX(occurred_at) AS last_signal_at
         FROM signals
-        GROUP BY source
+        GROUP BY source_key
     """))
-    db_stats = {row.source: row for row in count_result.fetchall()}
+    db_stats = {row.source_key: row for row in count_result.fetchall()}
 
     sources = []
     for src in SOURCES:

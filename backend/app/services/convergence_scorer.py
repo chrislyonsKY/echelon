@@ -36,9 +36,11 @@ SIGNAL_WEIGHTS: dict[str, float] = {
 
 # ── Scoring constants ──────────────────────────────────────────────────────────
 RECENCY_DECAY_RATE: float = 0.05   # Exponential decay coefficient (per hour)
-SIGMA_FLOOR: float = 0.001          # Prevents division by zero in quiet cells
+SIGMA_FLOOR: float = 0.01           # Prevents extreme Z-scores in cold-start cells
 LOW_CONFIDENCE_THRESHOLD: int = 30  # Minimum baseline observations for full confidence
 SCORE_WINDOW_HOURS: int = 72        # How far back to look for active signals
+Z_SCORE_CAP: float = 20.0           # Hard cap — Z > 20 is statistically meaningless
+MAX_SIGNALS_PER_SOURCE: int = 50    # Per-source cap within a cell to prevent volume domination
 
 
 def recency_factor(age_hours: float) -> float:
@@ -85,11 +87,20 @@ def compute_raw_score(
     if reference_time is None:
         reference_time = datetime.now(UTC)
 
+    # Cap signals per source type to prevent volume domination.
+    # A source with 102k signals should not outweigh 5 sources with 100 each.
+    source_counts: dict[str, int] = {}
+
     score = 0.0
     for signal in signals:
         signal_type = signal.get("signal_type", "")
         base_weight = SIGNAL_WEIGHTS.get(signal_type, 0.0)
         if base_weight == 0.0:
+            continue
+
+        # Per-source cap: skip signals beyond MAX_SIGNALS_PER_SOURCE per type
+        source_counts[signal_type] = source_counts.get(signal_type, 0) + 1
+        if source_counts[signal_type] > MAX_SIGNALS_PER_SOURCE:
             continue
 
         # Apply user multiplier if provided
@@ -117,6 +128,8 @@ def compute_z_score(raw_score: float, mu: float, sigma: float) -> float:
     """Normalize a raw score against cell baseline statistics.
 
     Formula: z = (raw_score - μ) / max(σ, SIGMA_FLOOR)
+    Capped at ±Z_SCORE_CAP to prevent statistically meaningless extremes
+    during cold start (low σ) or single-source volume spikes.
 
     Args:
         raw_score: The current raw convergence score.
@@ -124,7 +137,7 @@ def compute_z_score(raw_score: float, mu: float, sigma: float) -> float:
         sigma: Historical standard deviation for this cell.
 
     Returns:
-        Z-score (standard deviations above baseline). Negative values indicate
-        below-baseline activity.
+        Z-score capped at ±Z_SCORE_CAP.
     """
-    return (raw_score - mu) / max(sigma, SIGMA_FLOOR)
+    z = (raw_score - mu) / max(sigma, SIGMA_FLOOR)
+    return max(-Z_SCORE_CAP, min(Z_SCORE_CAP, z))

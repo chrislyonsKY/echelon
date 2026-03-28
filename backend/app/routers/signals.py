@@ -37,7 +37,11 @@ async def get_signal_detail(
     if not row:
         raise HTTPException(404, f"Signal {signal_id} not found")
 
-    # Find nearby signals (same H3 res-7 cell, last 24h) for context
+    # Find nearby signals (same H3 res-7 cell, +-24h window) for context
+    from datetime import timedelta
+    window_start = row.occurred_at - timedelta(hours=24) if row.occurred_at else None
+    window_end = row.occurred_at + timedelta(hours=24) if row.occurred_at else None
+
     related = await session.execute(
         text("""
             SELECT id, source, signal_type,
@@ -47,12 +51,12 @@ async def get_signal_detail(
             FROM signals
             WHERE h3_index_7 = :h3_7
               AND id != :signal_id
-              AND occurred_at >= :occurred_at - INTERVAL '24 hours'
-              AND occurred_at <= :occurred_at + INTERVAL '24 hours'
+              AND occurred_at >= :window_start
+              AND occurred_at <= :window_end
             ORDER BY occurred_at DESC
             LIMIT 20
         """),
-        {"h3_7": row.h3_index_7, "signal_id": signal_id, "occurred_at": row.occurred_at},
+        {"h3_7": row.h3_index_7, "signal_id": signal_id, "window_start": window_start, "window_end": window_end},
     )
 
     payload_fields = _signal_payload_fields(row.raw_payload)

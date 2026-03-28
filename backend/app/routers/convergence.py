@@ -169,21 +169,40 @@ async def get_regional_trends(
     for row in result.fetchall():
         current = row.current_count
         previous = row.previous_count
-        if previous > 0:
+
+        # Compute change % with cold-start protection:
+        # - If no previous data, trend is "new" not "rising"
+        # - If previous < 10, percentage is unreliable — flag as low baseline
+        # - Cap percentage at ±999% to prevent misleading extremes
+        if previous >= 10:
             change_pct = round((current - previous) / previous * 100, 1)
+            change_pct = max(-999.0, min(999.0, change_pct))
+        elif previous > 0:
+            change_pct = round((current - previous) / previous * 100, 1)
+            change_pct = max(-999.0, min(999.0, change_pct))
         elif current > 0:
-            change_pct = 100.0
+            change_pct = 0.0  # No baseline to compare against — show 0, not +100%
         else:
             change_pct = 0.0
 
         low_baseline = (current + previous) < 30
+
+        # Trend label with cold-start awareness
+        if low_baseline or previous < 5:
+            trend = "insufficient_data"
+        elif change_pct > 10:
+            trend = "rising"
+        elif change_pct < -10:
+            trend = "falling"
+        else:
+            trend = "stable"
 
         trends.append({
             "signalType": row.signal_type,
             "currentCount": current,
             "previousCount": previous,
             "changePct": change_pct,
-            "trend": "rising" if change_pct > 10 else "falling" if change_pct < -10 else "stable",
+            "trend": trend,
             "lowBaseline": low_baseline,
         })
 
