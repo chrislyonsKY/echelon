@@ -15,6 +15,7 @@ import BasemapSwitcher, { getBasemapStyleUrl } from "./BasemapSwitcher";
 import MeasureTools from "./MeasureTools";
 import SunCalcTool from "./SunCalc";
 import ExifDropZone from "./ExifDropZone";
+import CyberLayers from "./CyberLayers";
 
 
 const REFRESH_MS = 15 * 60 * 1000;
@@ -204,6 +205,7 @@ export default function EchelonMap() {
       <MeasureTools mapRef={mapRef} />
       <SunCalcTool mapRef={mapRef} />
       <ExifDropZone />
+      <CyberLayers mapRef={mapRef} />
       <ConfoundersToggle mapRef={mapRef} />
       <TimelineScrubber />
       <BasemapSwitcher />
