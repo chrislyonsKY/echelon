@@ -41,8 +41,8 @@ def upgrade() -> None:
 
     # Replace the TEXT location column with proper Geography
     op.execute("ALTER TABLE events DROP COLUMN location")
-    op.execute("SELECT AddGeographyColumn('events', 'location', 4326, 'POINT', 2)")
-    op.execute("ALTER TABLE events ALTER COLUMN location SET NOT NULL")
+    op.execute("ALTER TABLE events ADD COLUMN location geography(Point, 4326) NOT NULL DEFAULT ST_SetSRID(ST_MakePoint(0,0), 4326)::geography")
+    op.execute("ALTER TABLE events ALTER COLUMN location DROP DEFAULT")
 
     op.create_index("ix_events_event_type", "events", ["event_type"])
     op.create_index("ix_events_h3_index_7", "events", ["h3_index_7"])
