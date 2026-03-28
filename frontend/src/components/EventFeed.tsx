@@ -48,7 +48,7 @@ export default function EventFeed() {
     return () => clearInterval(interval);
   }, []);
 
-  const flyTo = (event: SignalEvent) => {
+  const openEvent = (event: SignalEvent) => {
     setViewState({
       longitude: event.location.lng,
       latitude: event.location.lat,
@@ -56,6 +56,8 @@ export default function EventFeed() {
       pitch: 0,
       bearing: 0,
     });
+    // Open event detail panel via custom event
+    window.dispatchEvent(new CustomEvent("echelon:open-event", { detail: event.id }));
   };
 
   return (
@@ -114,7 +116,7 @@ export default function EventFeed() {
               return (
                 <button
                   key={event.id}
-                  onClick={() => flyTo(event)}
+                  onClick={() => openEvent(event)}
                   style={{
                     display: "flex",
                     gap: 8,

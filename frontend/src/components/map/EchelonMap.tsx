@@ -5,10 +5,12 @@
  * Convergence heatmap rendered as circle markers from the API.
  */
 import { useRef, useCallback, useEffect, useState } from "react";
-import Map, { type MapRef, Source, Layer, type MapLayerMouseEvent } from "react-map-gl/maplibre";
+import Map, { type MapRef, Source, Layer, type MapLayerMouseEvent, type RasterSourceSpecification } from "react-map-gl/maplibre";
 import { useEchelonStore } from "@/store/echelonStore";
 import { convergenceApi, signalsApi, type ConvergenceTile, type SignalEvent } from "@/services/api";
 import { cellToLatLng } from "h3-js";
+import ConfoundersToggle from "./ConfoundersToggle";
+import TimelineScrubber from "./TimelineScrubber";
 
 const MAPLIBRE_STYLE = "https://tiles.openfreemap.org/styles/dark";
 const REFRESH_MS = 15 * 60 * 1000;
@@ -194,6 +196,8 @@ export default function EchelonMap() {
 
       <ConvergenceLegend />
       <SignalLegend />
+      <ConfoundersToggle mapRef={mapRef} />
+      <TimelineScrubber />
 
       <div style={{
         position: "absolute", bottom: 8, right: 320, fontSize: 8,

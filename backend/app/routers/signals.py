@@ -15,6 +15,74 @@ router = APIRouter()
 _MAX_RESULTS = 500
 
 
+@router.get("/event/{signal_id}")
+async def get_signal_detail(
+    signal_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return full detail for a single signal event. Used for permalinks."""
+    result = await session.execute(
+        text("""
+            SELECT id, source, signal_type,
+                   ST_Y(location::geometry) AS lat,
+                   ST_X(location::geometry) AS lon,
+                   h3_index_5, h3_index_7, h3_index_9,
+                   occurred_at, ingested_at, weight, raw_payload, source_id, dedup_hash
+            FROM signals
+            WHERE id = :signal_id
+        """),
+        {"signal_id": signal_id},
+    )
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(404, f"Signal {signal_id} not found")
+
+    # Find nearby signals (same H3 res-7 cell, last 24h) for context
+    related = await session.execute(
+        text("""
+            SELECT id, source, signal_type,
+                   ST_Y(location::geometry) AS lat,
+                   ST_X(location::geometry) AS lon,
+                   occurred_at, weight, raw_payload
+            FROM signals
+            WHERE h3_index_7 = :h3_7
+              AND id != :signal_id
+              AND occurred_at >= :occurred_at - INTERVAL '24 hours'
+              AND occurred_at <= :occurred_at + INTERVAL '24 hours'
+            ORDER BY occurred_at DESC
+            LIMIT 20
+        """),
+        {"h3_7": row.h3_index_7, "signal_id": signal_id, "occurred_at": row.occurred_at},
+    )
+
+    payload_fields = _signal_payload_fields(row.raw_payload)
+
+    return {
+        "id": str(row.id),
+        "source": row.source,
+        "signalType": row.signal_type,
+        "location": {"lat": row.lat, "lng": row.lon},
+        "h3": {"res5": row.h3_index_5, "res7": row.h3_index_7, "res9": row.h3_index_9},
+        "occurredAt": row.occurred_at.isoformat() if row.occurred_at else None,
+        "ingestedAt": row.ingested_at.isoformat() if row.ingested_at else None,
+        "weight": row.weight,
+        "sourceId": row.source_id,
+        **payload_fields,
+        "relatedSignals": [
+            {
+                "id": str(r.id),
+                "source": r.source,
+                "signalType": r.signal_type,
+                "location": {"lat": r.lat, "lng": r.lon},
+                "occurredAt": r.occurred_at.isoformat() if r.occurred_at else None,
+                "weight": r.weight,
+                **_signal_payload_fields(r.raw_payload),
+            }
+            for r in related.fetchall()
+        ],
+    }
+
+
 def _signal_payload_fields(payload: dict | None) -> dict:
     """Promote provenance fields from raw payload for easier client access."""
     payload = payload or {}

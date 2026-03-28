@@ -7,6 +7,9 @@ import AlertBell from "@/components/alerts/AlertBell";
 import TopBar from "@/components/TopBar";
 import DisclaimerFooter from "@/components/DisclaimerFooter";
 import AlertsPanel from "@/components/alerts/AlertsPanel";
+import SourceHealth from "@/components/SourceHealth";
+import TrendTable from "@/components/TrendTable";
+import EventDetail from "@/components/EventDetail";
 import { useEchelonStore } from "@/store/echelonStore";
 import { apiClient } from "@/services/api";
 
@@ -46,6 +49,9 @@ export default function App() {
       <EventFeed />
       <AlertBell />
       <AlertsPanel />
+      <EventDetail />
+      <SourceHealth />
+      <TrendTable />
       <DisclaimerFooter />
     </div>
   );
