@@ -16,14 +16,17 @@ export function useConvergenceTiles(resolution: H3Resolution) {
   const [error, setError] = useState<Error | null>(null);
   const [lastFetched, setLastFetched] = useState<Date | null>(null);
 
-  const fetch = useCallback(async () => {
+  const fetchTiles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("[Echelon] Fetching tiles for resolution", resolution);
       const data = await convergenceApi.getTiles(resolution);
+      console.log("[Echelon] Got", data.length, "tiles");
       setTiles(data);
       setLastFetched(new Date());
     } catch (err) {
+      console.error("[Echelon] Tile fetch failed:", err);
       setError(err instanceof Error ? err : new Error("Failed to fetch convergence tiles"));
     } finally {
       setIsLoading(false);
@@ -31,12 +34,12 @@ export function useConvergenceTiles(resolution: H3Resolution) {
   }, [resolution]);
 
   useEffect(() => {
-    fetch();
-    const interval = setInterval(fetch, REFRESH_INTERVAL_MS);
+    fetchTiles();
+    const interval = setInterval(fetchTiles, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [fetch]);
+  }, [fetchTiles]);
 
-  return { tiles, isLoading, error, lastFetched, refresh: fetch };
+  return { tiles, isLoading, error, lastFetched, refresh: fetchTiles };
 }
 
 /**
