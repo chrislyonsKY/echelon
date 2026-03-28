@@ -451,7 +451,7 @@ function PopupRow({ label, value, mono, highlight }: {
 
 // ── Map legend ────────────────────────────────────────────────────────────────
 
-function MapLegend({ tileCount, signalCount }: { tileCount: number; signalCount: number }) {
+function MapLegend(_props: { tileCount: number; signalCount: number }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
