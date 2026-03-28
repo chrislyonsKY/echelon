@@ -113,3 +113,78 @@ async def get_cell_detail(
             for row in rows
         ],
     }
+
+
+@router.get("/trends")
+async def get_regional_trends(
+    bbox: str | None = Query(default=None, description="west,south,east,north"),
+    days: int = Query(default=7, ge=1, le=90),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """Return signal counts and trend indicators grouped by source for a region.
+
+    Used by the Admin1 trend table and regional monitors.
+    If no bbox is provided, returns global trends.
+    """
+    params: dict = {"days": days}
+    bbox_clause = ""
+
+    if bbox:
+        try:
+            west, south, east, north = [float(x) for x in bbox.split(",")]
+        except ValueError:
+            raise HTTPException(400, "bbox must be four comma-separated floats")
+        params.update(west=west, south=south, east=east, north=north)
+        bbox_clause = "AND ST_Intersects(location, ST_MakeEnvelope(:west, :south, :east, :north, 4326))"
+
+    result = await session.execute(
+        text(f"""
+            WITH current_period AS (
+                SELECT signal_type, COUNT(*) AS count
+                FROM signals
+                WHERE occurred_at >= NOW() - INTERVAL '1 day' * :days
+                {bbox_clause}
+                GROUP BY signal_type
+            ),
+            previous_period AS (
+                SELECT signal_type, COUNT(*) AS count
+                FROM signals
+                WHERE occurred_at >= NOW() - INTERVAL '1 day' * :days * 2
+                  AND occurred_at < NOW() - INTERVAL '1 day' * :days
+                {bbox_clause}
+                GROUP BY signal_type
+            )
+            SELECT
+                COALESCE(c.signal_type, p.signal_type) AS signal_type,
+                COALESCE(c.count, 0) AS current_count,
+                COALESCE(p.count, 0) AS previous_count
+            FROM current_period c
+            FULL OUTER JOIN previous_period p ON c.signal_type = p.signal_type
+            ORDER BY COALESCE(c.count, 0) DESC
+        """),
+        params,
+    )
+
+    trends = []
+    for row in result.fetchall():
+        current = row.current_count
+        previous = row.previous_count
+        if previous > 0:
+            change_pct = round((current - previous) / previous * 100, 1)
+        elif current > 0:
+            change_pct = 100.0
+        else:
+            change_pct = 0.0
+
+        low_baseline = (current + previous) < 30
+
+        trends.append({
+            "signalType": row.signal_type,
+            "currentCount": current,
+            "previousCount": previous,
+            "changePct": change_pct,
+            "trend": "rising" if change_pct > 10 else "falling" if change_pct < -10 else "stable",
+            "lowBaseline": low_baseline,
+        })
+
+    return trends

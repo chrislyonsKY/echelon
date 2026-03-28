@@ -6,6 +6,7 @@ import EventFeed from "@/components/EventFeed";
 import AlertBell from "@/components/alerts/AlertBell";
 import TopBar from "@/components/TopBar";
 import DisclaimerFooter from "@/components/DisclaimerFooter";
+import AlertsPanel from "@/components/alerts/AlertsPanel";
 import { useEchelonStore } from "@/store/echelonStore";
 import { apiClient } from "@/services/api";
 
@@ -44,6 +45,7 @@ export default function App() {
       </div>
       <EventFeed />
       <AlertBell />
+      <AlertsPanel />
       <DisclaimerFooter />
     </div>
   );

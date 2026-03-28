@@ -5,6 +5,7 @@ import { useEchelonStore } from "@/store/echelonStore";
 import { authApi } from "@/services/api";
 import { format, subDays } from "date-fns";
 import SearchBar from "./SearchBar";
+import RegionalMonitors from "./RegionalMonitors";
 
 const PRESETS = [
   { label: "24h",  days: 1 },
@@ -93,6 +94,11 @@ export default function TopBar() {
       }}>
         {format(dateRange.from, "MMM d")} — {format(dateRange.to, "MMM d, yyyy")}
       </span>
+
+      <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
+
+      {/* Regional monitors */}
+      <RegionalMonitors />
 
       <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
 
