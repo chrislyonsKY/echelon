@@ -77,7 +77,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: echelon_beat
-    command: celery -A app.workers.celery_app beat --loglevel=info
+    command: celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echelon:${POSTGRES_PASSWORD}@db:5432/echelon
