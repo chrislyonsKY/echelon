@@ -28,14 +28,21 @@ const MAPLIBRE_STYLE = "https://tiles.openfreemap.org/styles/dark";
  * Returns [R, G, B, A] for a given Z-score.
  * Low-confidence cells get reduced opacity and hatching (handled in CSS).
  */
-function zScoreToColor(zScore: number, lowConfidence: boolean): [number, number, number, number] {
-  const alpha = lowConfidence ? 120 : 200;
-  if (zScore < 0.5)  return [30,  58,  95,  alpha * 0.3];
-  if (zScore < 1.0)  return [30,  58,  95,  alpha * 0.6];
-  if (zScore < 1.5)  return [245, 158, 11,  alpha];
-  if (zScore < 2.0)  return [251, 113, 0,   alpha];
-  if (zScore < 3.0)  return [239, 68,  68,  alpha];
-  return                    [124, 58,  237, alpha];    // Extreme — purple
+function zScoreToColor(zScore: number, lowConfidence: boolean, rawScore?: number): [number, number, number, number] {
+  // During cold start (low confidence), use raw score for visibility
+  // Raw scores range ~0.01–2.0; map to a visual scale
+  const score = lowConfidence && rawScore !== undefined
+    ? rawScore * 3  // Scale raw score to approximate Z-score visual range
+    : zScore;
+
+  const alpha = lowConfidence ? 140 : 200;
+  if (score < 0.1)  return [26,  48,  80,  alpha * 0.4];
+  if (score < 0.3)  return [26,  48,  80,  alpha * 0.7];
+  if (score < 0.5)  return [30,  58,  95,  alpha];
+  if (score < 1.0)  return [229, 164, 0,   alpha];
+  if (score < 1.5)  return [251, 113, 0,   alpha];
+  if (score < 2.5)  return [240, 68,  68,  alpha];
+  return                   [147, 51,  234, alpha];    // Extreme — purple
 }
 
 export default function EchelonMap() {
@@ -71,7 +78,7 @@ export default function EchelonMap() {
         id: "convergence-heatmap",
         data: tiles,
         getHexagon: (d) => d.h3Index,
-        getFillColor: (d) => zScoreToColor(d.zScore, d.lowConfidence),
+        getFillColor: (d) => zScoreToColor(d.zScore, d.lowConfidence, d.rawScore),
         getElevation: () => 0,
         extruded: false,
         pickable: true,
@@ -109,8 +116,8 @@ export default function EchelonMap() {
         getTooltip={({ object }) =>
           object && {
             html: `<div class="map-tooltip">
-              <strong>Z-Score: ${object.zScore?.toFixed(2) ?? "—"}</strong>
-              ${object.lowConfidence ? "<span class='low-confidence'>Low confidence</span>" : ""}
+              <strong>${object.lowConfidence ? "Score" : "Z-Score"}: ${object.lowConfidence ? object.rawScore?.toFixed(3) ?? "—" : (object.zScore?.toFixed(2) ?? "—") + "σ"}</strong>
+              ${object.lowConfidence ? "<span class='low-confidence'>Building baseline…</span>" : ""}
             </div>`,
           }
         }
