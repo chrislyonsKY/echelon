@@ -108,6 +108,50 @@ class AOI(Base):
     alerts = relationship("Alert", back_populates="aoi", cascade="all, delete-orphan")
 
 
+class Evidence(Base):
+    """Evidence items attached to signal events.
+
+    Video is evidence — provenance determines trust,
+    graphic classification determines presentation.
+    Evidence never affects convergence scoring.
+    """
+
+    __tablename__ = "evidence"
+
+    id                        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    signal_id                 = Column(UUID(as_uuid=True), ForeignKey("signals.id", ondelete="CASCADE"), nullable=False, index=True)
+    type                      = Column(Text, nullable=False)  # "video", "image", "document"
+    url                       = Column(Text, nullable=False)
+    platform                  = Column(Text)  # "youtube", "telegram", "twitter", "tiktok", etc.
+    thumbnail_url             = Column(Text)
+    title                     = Column(Text)
+    description               = Column(Text)
+    author                    = Column(Text)
+    language                  = Column(Text)
+    published_at              = Column(DateTime(timezone=True))
+    attached_at               = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    # Provenance — determines trust
+    provenance_family         = Column(Text)  # "official", "ugc", "aggregator", "context_only"
+    confirmation_policy       = Column(Text)  # "wire_confirmed", "context_only", "unverified"
+
+    # Verification status
+    geolocation_status        = Column(Text, default="unverified")  # "geolocated", "unverified", "disputed"
+    time_verification_status  = Column(Text, default="unverified")  # "verified", "unverified", "disputed"
+
+    # Graphic content — controls presentation only, never scoring
+    graphic_flag              = Column(Boolean, default=False)
+    graphic_confidence        = Column(Float)  # 0.0-1.0 from moderation model
+    graphic_reason            = Column(Text)   # "violence", "gore", "disturbing", etc.
+
+    # Review workflow
+    review_status             = Column(Text, nullable=False, default="unreviewed")
+    # "unreviewed" | "auto_flagged" | "human_approved" | "human_rejected"
+
+    # Raw metadata from moderation/extraction pipeline
+    moderation_payload        = Column(JSONB)
+
+
 class Alert(Base):
     """Fired alert events — stored for in-app notification and email delivery."""
 

@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { apiClient } from "@/services/api";
 import { useEchelonStore } from "@/store/echelonStore";
 import { format } from "date-fns";
+import EvidenceTab from "./EvidenceTab";
 
 interface EventDetailData {
   id: string;
@@ -37,6 +38,7 @@ export default function EventDetail() {
   const { setViewState } = useEchelonStore();
   const [event, setEvent] = useState<EventDetailData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<"detail" | "evidence">("detail");
 
   // Check URL for ?event=<id> permalink on mount
   useEffect(() => {
@@ -120,6 +122,26 @@ export default function EventDetail() {
             </div>
           </div>
 
+          {/* Tab bar */}
+          <div style={{
+            display: "flex", borderBottom: "1px solid var(--color-border)",
+          }}>
+            {(["detail", "evidence"] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)} style={{
+                flex: 1, padding: "8px", border: "none", fontSize: 11, fontWeight: 600,
+                textTransform: "uppercase", letterSpacing: "0.05em", cursor: "pointer",
+                background: tab === t ? "var(--color-accent-muted)" : "none",
+                color: tab === t ? "var(--color-accent)" : "var(--color-text-muted)",
+                borderBottom: tab === t ? "2px solid var(--color-accent)" : "2px solid transparent",
+              }}>
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {tab === "evidence" && <EvidenceTab signalId={event.id} />}
+
+          {tab === "detail" && <>
           {/* Provenance */}
           {(event.provenanceFamily || event.confirmationPolicy) && (
             <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--color-border)", display: "flex", gap: 6 }}>
@@ -184,6 +206,7 @@ export default function EventDetail() {
               ))}
             </div>
           )}
+          </>}
         </>
       )}
     </div>
