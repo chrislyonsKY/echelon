@@ -1,53 +1,17 @@
 /**
  * EchelonMap
  *
- * Primary map canvas. Manages MapLibre GL JS and Deck.gl overlay.
- * All layer data flows from the Zustand store.
- *
- * Layers:
- *   - H3HexagonLayer — convergence heatmap
- *   - ScatterplotLayer — GDELT conflict events (red dots)
- *   - ScatterplotLayer — GFW vessel events (blue diamonds)
- *   - ScatterplotLayer — News/OSINT signals (amber)
+ * Uses MapLibre GL JS native layers instead of Deck.gl for reliability.
+ * Convergence heatmap rendered as circle markers from the API.
  */
-import { useRef, useCallback } from "react";
-import Map, { type MapRef } from "react-map-gl/maplibre";
-import { DeckGL } from "@deck.gl/react";
-import { H3HexagonLayer } from "@deck.gl/geo-layers";
-import { ScatterplotLayer } from "@deck.gl/layers";
+import { useRef, useCallback, useEffect, useState } from "react";
+import Map, { type MapRef, Source, Layer, type MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { useEchelonStore } from "@/store/echelonStore";
-import { useConvergenceTiles, useSignalLayer } from "@/hooks/useConvergenceTiles";
-import type { PickingInfo } from "@deck.gl/core";
+import { convergenceApi, signalsApi, type ConvergenceTile, type SignalEvent } from "@/services/api";
+import { cellToLatLng } from "h3-js";
 
 const MAPLIBRE_STYLE = "https://tiles.openfreemap.org/styles/dark";
-
-function zScoreToColor(zScore: number, lowConfidence: boolean, rawScore?: number): [number, number, number, number] {
-  const score = lowConfidence && rawScore !== undefined
-    ? rawScore * 3
-    : zScore;
-
-  const alpha = lowConfidence ? 140 : 200;
-  if (score < 0.1)  return [26,  48,  80,  alpha * 0.4];
-  if (score < 0.3)  return [26,  48,  80,  alpha * 0.7];
-  if (score < 0.5)  return [30,  58,  95,  alpha];
-  if (score < 1.0)  return [229, 164, 0,   alpha];
-  if (score < 1.5)  return [251, 113, 0,   alpha];
-  if (score < 2.5)  return [240, 68,  68,  alpha];
-  return                   [147, 51,  234, alpha];
-}
-
-// Signal type → color mapping for event dots
-const SIGNAL_COLORS: Record<string, [number, number, number, number]> = {
-  gdelt_conflict:    [240, 68,  68,  200],  // red
-  gdelt_gkg_threat:  [240, 68,  68,  140],  // red (muted)
-  gfw_ais_gap:       [45, 140, 240, 220],   // blue
-  gfw_loitering:     [45, 140, 240, 150],   // blue (muted)
-  newsdata_article:  [229, 164, 0,   180],  // amber
-  osint_scrape:      [229, 164, 0,   140],  // amber (muted)
-  osm_change:        [0,  196, 140, 120],   // green
-  opensky_military:  [6,  182, 212, 200],   // cyan
-  ais_position:      [45, 140, 240, 100],   // blue (subtle)
-};
+const REFRESH_MS = 15 * 60 * 1000;
 
 export default function EchelonMap() {
   const mapRef = useRef<MapRef>(null);
@@ -56,143 +20,141 @@ export default function EchelonMap() {
     setViewState,
     setSelectedCell,
     activeResolution,
-    layerVisibility,
+    dateRange,
   } = useEchelonStore();
 
-  const { tiles, isLoading } = useConvergenceTiles(activeResolution);
+  const [tiles, setTiles] = useState<ConvergenceTile[]>([]);
+  const [signals, setSignals] = useState<SignalEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch signal layers for different sources
-  const gdeltResult = useSignalLayer("gdelt");
-  const gdeltEvents = (gdeltResult as Record<string, unknown>)["gdeltEvents"] as Array<{ location: { lng: number; lat: number }; signalType: string }> ?? [];
+  // Fetch convergence tiles
+  useEffect(() => {
+    const load = () => {
+      setIsLoading(true);
+      convergenceApi.getTiles(activeResolution)
+        .then(data => {
+          console.log(`[Echelon] Loaded ${data.length} tiles`);
+          setTiles(data);
+        })
+        .catch(err => console.error("[Echelon] Tile fetch error:", err))
+        .finally(() => setIsLoading(false));
+    };
+    load();
+    const interval = setInterval(load, REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [activeResolution]);
 
-  const gfwResult = useSignalLayer("gfw");
-  const gfwEvents = (gfwResult as Record<string, unknown>)["gfwEvents"] as Array<{ location: { lng: number; lat: number }; signalType: string }> ?? [];
+  // Fetch signal events when zoomed in
+  useEffect(() => {
+    const zoom = viewState.zoom ?? 2;
+    if (zoom < 4) { setSignals([]); return; }
 
-  const handleCellClick = useCallback(
-    (info: PickingInfo) => {
-      if (!info.object) return;
+    const span = 360 / Math.pow(2, zoom);
+    const lon = viewState.longitude ?? 0;
+    const lat = viewState.latitude ?? 0;
+    const bbox: [number, number, number, number] = [lon - span/2, lat - span/2, lon + span/2, lat + span/2];
+
+    signalsApi.getForBbox(bbox, "", dateRange.from.toISOString().split("T")[0], dateRange.to.toISOString().split("T")[0])
+      .then(data => setSignals(data))
+      .catch(() => setSignals([]));
+  }, [viewState.zoom, viewState.longitude, viewState.latitude, dateRange]);
+
+  // Convert tiles to GeoJSON using h3 cell centers
+  const tileGeoJSON = tilesToGeoJSON(tiles);
+  const signalGeoJSON = signalsToGeoJSON(signals);
+
+  const handleClick = useCallback((e: MapLayerMouseEvent) => {
+    const feature = e.features?.[0];
+    if (!feature?.properties) return;
+
+    const props = feature.properties;
+    if (props.h3Index) {
       setSelectedCell({
-        h3Index: info.object.h3Index,
+        h3Index: props.h3Index,
         resolution: activeResolution,
-        zScore: info.object.zScore,
-        center: [info.coordinate![0], info.coordinate![1]],
+        zScore: props.zScore || 0,
+        center: [e.lngLat.lng, e.lngLat.lat],
       });
-    },
-    [activeResolution, setSelectedCell]
-  );
-
-  const layers = [
-    // Base layer: convergence heatmap
-    layerVisibility.convergenceHeatmap &&
-      new H3HexagonLayer({
-        id: "convergence-heatmap",
-        data: tiles,
-        getHexagon: (d) => d.h3Index,
-        getFillColor: (d) => zScoreToColor(d.zScore, d.lowConfidence, d.rawScore),
-        getElevation: () => 0,
-        extruded: false,
-        pickable: true,
-        onClick: handleCellClick,
-        updateTriggers: { getFillColor: [tiles] },
-      }),
-
-    // GDELT conflict events — red pulsing dots
-    layerVisibility.gdeltEvents &&
-      new ScatterplotLayer({
-        id: "gdelt-events",
-        data: gdeltEvents,
-        getPosition: (d) => [d.location.lng, d.location.lat],
-        getRadius: 6000,
-        getFillColor: (d) => SIGNAL_COLORS[d.signalType] || [240, 68, 68, 200],
-        getLineColor: [255, 255, 255, 60],
-        stroked: true,
-        lineWidthMinPixels: 1,
-        pickable: true,
-        radiusMinPixels: 3,
-        radiusMaxPixels: 12,
-      }),
-
-    // GFW vessel events — blue markers
-    layerVisibility.gfwVessels &&
-      new ScatterplotLayer({
-        id: "gfw-events",
-        data: gfwEvents,
-        getPosition: (d) => [d.location.lng, d.location.lat],
-        getRadius: 8000,
-        getFillColor: (d) => SIGNAL_COLORS[d.signalType] || [45, 140, 240, 200],
-        getLineColor: [255, 255, 255, 80],
-        stroked: true,
-        lineWidthMinPixels: 1,
-        pickable: true,
-        radiusMinPixels: 4,
-        radiusMaxPixels: 14,
-      }),
-  ].filter(Boolean);
+    }
+  }, [activeResolution, setSelectedCell]);
 
   return (
     <div style={{ position: "relative", flex: 1, height: "100%" }}>
-      <DeckGL
-        viewState={viewState}
-        onViewStateChange={({ viewState: vs }) => setViewState(vs as typeof viewState)}
-        controller={true}
-        layers={layers}
-        style={{ position: "absolute", inset: "0" }}
-        getTooltip={({ object }) => {
-          if (!object) return null;
-          // H3 cell tooltip
-          if (object.h3Index) {
-            const sources = object.signalBreakdown ? Object.keys(object.signalBreakdown) : [];
-            return {
-              html: `<div class="map-tooltip">
-                <strong>${object.lowConfidence ? "Activity Score" : "Z-Score"}: ${object.lowConfidence ? (object.rawScore ?? 0).toFixed(3) : (object.zScore ?? 0).toFixed(2) + "σ"}</strong>
-                ${sources.length ? `<div style="margin-top:3px;font-size:10px;color:#7c8db5">${sources.map((s: string) => s.replace(/_/g, " ")).join(" + ")}</div>` : ""}
-                ${object.lowConfidence ? "<span class='low-confidence'>Building baseline…</span>" : ""}
-                <div style="margin-top:4px;font-size:9px;color:#4a5a7a">Click to investigate</div>
-              </div>`,
-            };
-          }
-          // Signal event tooltip
-          if (object.signalType) {
-            return {
-              html: `<div class="map-tooltip">
-                <strong>${(object.signalType as string).replace(/_/g, " ")}</strong>
-                <div style="font-size:10px;color:#7c8db5">${object.location?.lat?.toFixed(2)}, ${object.location?.lng?.toFixed(2)}</div>
-              </div>`,
-            };
-          }
-          return null;
+      <Map
+        ref={mapRef}
+        {...viewState}
+        onMove={evt => setViewState(evt.viewState)}
+        mapStyle={MAPLIBRE_STYLE}
+        attributionControl={false}
+        interactiveLayerIds={["convergence-circles"]}
+        onClick={handleClick}
+        onLoad={() => {
+          const map = mapRef.current?.getMap();
+          if (!map) return;
+          map.getStyle().layers.forEach((layer) => {
+            if (layer.type === "symbol" && layer.layout?.["text-field"]) {
+              map.setPaintProperty(layer.id, "text-opacity", [
+                "interpolate", ["linear"], ["zoom"], 0, 0.15, 4, 0.3, 7, 0.6, 10, 0.85,
+              ]);
+            }
+          });
         }}
       >
-        <Map
-          ref={mapRef}
-          mapStyle={MAPLIBRE_STYLE}
-          attributionControl={false}
-          reuseMaps
-          onLoad={() => {
-            const map = mapRef.current?.getMap();
-            if (!map) return;
-            map.getStyle().layers.forEach((layer) => {
-              if (layer.type === "symbol" && layer.layout?.["text-field"]) {
-                map.setPaintProperty(layer.id, "text-opacity", [
-                  "interpolate", ["linear"], ["zoom"], 0, 0.15, 4, 0.3, 7, 0.6, 10, 0.85,
-                ]);
-                map.setPaintProperty(layer.id, "text-halo-opacity", [
-                  "interpolate", ["linear"], ["zoom"], 0, 0.1, 4, 0.2, 7, 0.5, 10, 0.8,
-                ]);
-              }
-            });
-          }}
-        />
-      </DeckGL>
+        {/* Convergence heatmap as circles */}
+        <Source id="convergence" type="geojson" data={tileGeoJSON}>
+          <Layer
+            id="convergence-circles"
+            type="circle"
+            paint={{
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 4, 5, 8, 8, 14, 12, 20],
+              "circle-color": [
+                "interpolate", ["linear"], ["get", "score"],
+                0, "rgba(26,48,80,0.4)",
+                0.1, "rgba(26,48,80,0.7)",
+                0.3, "rgba(30,58,95,0.9)",
+                0.5, "rgba(229,164,0,0.9)",
+                1.0, "rgba(251,113,0,0.9)",
+                2.0, "rgba(240,68,68,0.9)",
+                4.0, "rgba(147,51,234,0.95)",
+              ],
+              "circle-opacity": 0.85,
+              "circle-blur": 0.3,
+            }}
+          />
+        </Source>
+
+        {/* Signal events as smaller dots */}
+        <Source id="signals" type="geojson" data={signalGeoJSON}>
+          <Layer
+            id="signal-dots"
+            type="circle"
+            paint={{
+              "circle-radius": 4,
+              "circle-color": [
+                "match", ["get", "source"],
+                "gdelt", "#f04444",
+                "gfw", "#2d8cf0",
+                "newsdata", "#e5a400",
+                "osm", "#00c48c",
+                "opensky", "#06b6d4",
+                "#7c8db5",
+              ],
+              "circle-opacity": 0.8,
+              "circle-stroke-width": 1,
+              "circle-stroke-color": "rgba(255,255,255,0.2)",
+            }}
+          />
+        </Source>
+      </Map>
 
       {isLoading && (
-        <div role="status" aria-label="Loading" style={{
+        <div role="status" style={{
           position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
           background: "rgba(13,19,32,0.9)", color: "var(--color-text-muted)",
           padding: "5px 14px", borderRadius: 6, fontSize: 11,
           border: "1px solid var(--color-border)", backdropFilter: "blur(8px)",
         }}>
-          <span style={{ animation: "pulse 1.5s infinite" }}>Updating convergence…</span>
+          <span style={{ animation: "pulse 1.5s infinite" }}>Loading signals…</span>
         </div>
       )}
 
@@ -200,14 +162,43 @@ export default function EchelonMap() {
       <SignalLegend />
 
       <div style={{
-        position: "absolute", bottom: 8, right: 8, fontSize: 8,
-        color: "var(--color-text-muted)", textAlign: "right", lineHeight: 1.4,
-        fontFamily: "var(--font-mono)",
+        position: "absolute", bottom: 8, right: 320, fontSize: 8,
+        color: "var(--color-text-muted)", fontFamily: "var(--font-mono)",
       }}>
-        GDELT | GFW | OpenSky | OSM | News | OSINT
+        {tiles.length} cells | {signals.length} events
       </div>
     </div>
   );
+}
+
+function tilesToGeoJSON(tiles: ConvergenceTile[]): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: tiles.map(t => {
+      let lat = 0, lng = 0;
+      try {
+        const [la, ln] = cellToLatLng(t.h3Index);
+        lat = la; lng = ln;
+      } catch { /* skip invalid */ }
+      const score = t.lowConfidence ? t.rawScore * 3 : t.zScore;
+      return {
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [lng, lat] },
+        properties: { h3Index: t.h3Index, zScore: t.zScore, rawScore: t.rawScore, score, lowConfidence: t.lowConfidence },
+      };
+    }).filter(f => f.geometry.coordinates[0] !== 0),
+  };
+}
+
+function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: signals.map(s => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [s.location.lng, s.location.lat] },
+      properties: { source: s.source, signalType: s.signalType },
+    })),
+  };
 }
 
 function ConvergenceLegend() {
@@ -215,8 +206,7 @@ function ConvergenceLegend() {
     <div aria-label="Convergence legend" style={{
       position: "absolute", bottom: 32, left: 16,
       background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
-      borderRadius: 8, padding: "10px 14px", fontSize: 11,
-      color: "var(--color-text-secondary)", minWidth: 140, backdropFilter: "blur(8px)",
+      borderRadius: 8, padding: "10px 14px", backdropFilter: "blur(8px)",
     }}>
       <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--color-text-primary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         Convergence
@@ -229,8 +219,8 @@ function ConvergenceLegend() {
         { label: "Extreme", color: "#9333ea" },
       ].map(({ label, color }) => (
         <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-          <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0, border: "1px solid rgba(255,255,255,0.08)" }} />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{label}</span>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-text-secondary)" }}>{label}</span>
         </div>
       ))}
     </div>
@@ -240,24 +230,23 @@ function ConvergenceLegend() {
 function SignalLegend() {
   return (
     <div style={{
-      position: "absolute", bottom: 32, left: 176,
+      position: "absolute", bottom: 32, left: 160,
       background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
-      borderRadius: 8, padding: "10px 14px", fontSize: 11,
-      color: "var(--color-text-secondary)", backdropFilter: "blur(8px)",
+      borderRadius: 8, padding: "10px 14px", backdropFilter: "blur(8px)",
     }}>
       <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--color-text-primary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        Signal Layers
+        Signals
       </div>
       {[
-        { label: "Conflict", color: "rgb(240,68,68)" },
-        { label: "Vessel", color: "rgb(45,140,240)" },
-        { label: "News / OSINT", color: "rgb(229,164,0)" },
-        { label: "Infrastructure", color: "rgb(0,196,140)" },
-        { label: "Military Air", color: "rgb(6,182,212)" },
+        { label: "Conflict", color: "#f04444" },
+        { label: "Maritime", color: "#2d8cf0" },
+        { label: "News", color: "#e5a400" },
+        { label: "Infrastructure", color: "#00c48c" },
+        { label: "Aviation", color: "#06b6d4" },
       ].map(({ label, color }) => (
         <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
-          <span style={{ fontSize: 10 }}>{label}</span>
+          <span style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>{label}</span>
         </div>
       ))}
     </div>
