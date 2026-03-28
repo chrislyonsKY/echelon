@@ -484,8 +484,8 @@ async def _chat_ollama(
                         "max_tokens": 2048,
                     },
                 )
-            except httpx.ConnectError:
-                raise HTTPException(503, "Ollama is not running. Start it with: ollama serve")
+            except (httpx.ConnectError, httpx.ConnectTimeout, OSError):
+                raise HTTPException(503, "Ollama is not reachable. Ensure Ollama is installed and running on the server (ollama serve), and that OLLAMA_BASE_URL is set correctly.")
             resp.raise_for_status()
             body = resp.json()
             choice = body["choices"][0]

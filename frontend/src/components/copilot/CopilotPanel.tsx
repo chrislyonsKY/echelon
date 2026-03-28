@@ -107,14 +107,19 @@ export default function CopilotPanel() {
       }
     } catch (err: unknown) {
       let errorMsg = "Something went wrong. Check that your API key is valid and try again.";
-      if (err && typeof err === "object" && "message" in err) {
-        const msg = String((err as { message: string }).message);
-        if (msg.includes("401")) errorMsg = "Invalid API key. Please check your key and try again.";
-        else if (msg.includes("429")) errorMsg = "Rate limit exceeded. Wait a moment and try again.";
-        else if (msg.includes("503")) errorMsg = provider === "ollama"
-          ? "Ollama is not running on the server. Ask the admin to install and start it, or switch to another provider."
+      if (err && typeof err === "object") {
+        const status = "status" in err ? (err as { status: number }).status : 0;
+        const msg = "message" in err ? String((err as { message: string }).message) : "";
+        if (status === 401 || msg.includes("401")) errorMsg = "Invalid API key. Please check your key and try again.";
+        else if (status === 429 || msg.includes("429")) errorMsg = "Rate limit exceeded. Wait a moment and try again.";
+        else if (status === 503 || msg.includes("503")) errorMsg = provider === "ollama"
+          ? "Ollama is not running on the server. Install and start it, or switch to another provider."
           : "Service temporarily unavailable. Try again in a moment.";
-        else if (msg.includes("502")) errorMsg = "The copilot backend is restarting. Try again in a few seconds.";
+        else if (status === 502 || msg.includes("502")) errorMsg = "The copilot backend is restarting. Try again in a few seconds.";
+        else if (msg) {
+          // Surface the actual error detail from the API
+          try { errorMsg = JSON.parse(msg).detail || errorMsg; } catch { errorMsg = msg.length < 200 ? msg : errorMsg; }
+        }
       }
       addCopilotMessage({
         id: crypto.randomUUID(),
