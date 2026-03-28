@@ -38,10 +38,13 @@ services:
       - DATABASE_URL=postgresql+asyncpg://echelon:${POSTGRES_PASSWORD}@db:5432/echelon
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
+      - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -109,6 +112,21 @@ services:
     networks:
       - echelon_net
 
+  # ── Ollama (self-hosted LLM) ─────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: echelon_ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/version || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - echelon_net
+
   # ── PostgreSQL + PostGIS ──────────────────────────────────────────────────
   db:
     image: postgis/postgis:16-3.4-alpine
@@ -148,6 +166,7 @@ volumes:
   postgres_data:
   redis_data:
   frontend_dist:
+  ollama_data:
 
 networks:
   echelon_net:
