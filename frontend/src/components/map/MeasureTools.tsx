@@ -4,7 +4,7 @@
  *
  * Uses Haversine formula for spherical distance (no external deps).
  */
-import { useState, useCallback, useEffect, type RefObject } from "react";
+import { useState, useEffect, type RefObject } from "react";
 import type { MapRef } from "react-map-gl/maplibre";
 
 interface Point {

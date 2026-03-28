@@ -16,7 +16,7 @@ import MeasureTools from "./MeasureTools";
 import SunCalcTool from "./SunCalc";
 import ExifDropZone from "./ExifDropZone";
 
-const MAPLIBRE_STYLE = "https://tiles.openfreemap.org/styles/dark";
+
 const REFRESH_MS = 15 * 60 * 1000;
 
 export default function EchelonMap() {
