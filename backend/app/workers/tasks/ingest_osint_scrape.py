@@ -10,9 +10,11 @@ Task is idempotent — safe to retry on failure.
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 import h3
 import orjson
+from dateutil import parser as date_parser
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -71,7 +73,6 @@ async def _ingest() -> dict:
         logger.info("OSINT scrape: no results returned")
         return {"inserted": 0, "skipped": 0, "total_fetched": 0}
 
-    weight = SIGNAL_WEIGHTS.get("osint_scrape", 0.12)
     rows: list[dict] = []
 
     for item in results:
@@ -89,22 +90,27 @@ async def _ingest() -> dict:
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             continue
 
-        published_at = item.get("published_at", "")
-        try:
-            occurred_at = datetime.fromisoformat(published_at).replace(tzinfo=timezone.utc)
-        except (ValueError, TypeError):
-            occurred_at = datetime.now(tz=timezone.utc)
+        signal_type = str(item.get("signal_type", "osint_scrape"))
+        source_group = str(item.get("source_group", "osint_scrape"))
+        source_id = str(item.get("source_id") or item.get("url") or "")
+        weight = SIGNAL_WEIGHTS.get(
+            signal_type,
+            SIGNAL_WEIGHTS.get("osint_scrape", 0.12),
+        )
+        occurred_at = _parse_published_at(item.get("published_at"))
 
         raw_payload = orjson.dumps({
             "title": item.get("title", ""),
             "description": item.get("description", ""),
             "url": item.get("url", ""),
             "source": item.get("source", ""),
+            "source_group": source_group,
+            "metadata": item.get("metadata", {}),
         }).decode()
 
         rows.append({
-            "source": "osint_scrape",
-            "signal_type": "osint_scrape",
+            "source": source_group,
+            "signal_type": signal_type,
             "h3_index_5": h3.geo_to_h3(lat, lon, 5),
             "h3_index_7": h3.geo_to_h3(lat, lon, 7),
             "h3_index_9": h3.geo_to_h3(lat, lon, 9),
@@ -113,7 +119,7 @@ async def _ingest() -> dict:
             "occurred_at": occurred_at,
             "weight": weight,
             "raw_payload": raw_payload,
-            "source_id": item.get("url", ""),
+            "source_id": source_id,
             "dedup_hash": service.build_dedup_hash(item),
         })
 
@@ -161,3 +167,42 @@ async def _bulk_insert(rows: list[dict]) -> dict:
         await engine.dispose()
 
     return {"inserted": inserted, "skipped": skipped, "total": len(rows)}
+
+
+def _parse_published_at(value: Any) -> datetime:
+    """Parse a scraper timestamp into a timezone-aware datetime."""
+    if value in (None, ""):
+        return datetime.now(timezone.utc)
+
+    if isinstance(value, (int, float)):
+        return _datetime_from_timestamp(float(value))
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return datetime.now(timezone.utc)
+
+        if text.isdigit():
+            return _datetime_from_timestamp(float(text))
+
+        try:
+            parsed = date_parser.parse(text)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except (ValueError, TypeError, OverflowError):
+            return datetime.now(timezone.utc)
+
+    return datetime.now(timezone.utc)
+
+
+def _datetime_from_timestamp(value: float) -> datetime:
+    """Convert seconds or milliseconds since epoch into UTC datetime."""
+    # Millisecond epochs are common in GeoJSON APIs.
+    if value > 10_000_000_000:
+        value /= 1000.0
+
+    try:
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return datetime.now(timezone.utc)

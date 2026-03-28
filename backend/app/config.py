@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # ── BYOK encryption ───────────────────────────────────────────────────────
     byok_encryption_key: str = ""
 
+    # ── NASA FIRMS (thermal anomalies) ──────────────────────────────────────────
+    firms_map_key: str = ""
+
     # ── AISStream (real-time AIS) ────────────────────────────────────────────────
     aisstream_api_key: str = ""
 

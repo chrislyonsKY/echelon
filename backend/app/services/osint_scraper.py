@@ -13,10 +13,12 @@ creates geolocated signal events. Sources include:
 All sources are free and require no API keys. Each source fails independently;
 a single unreachable feed never crashes the full scrape cycle.
 """
+import asyncio
 import hashlib
 import logging
 import re
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -91,6 +93,18 @@ CLEARNET_AGGREGATORS: dict[str, str] = {
 _USER_AGENT: str = "Echelon OSINT Monitor (research)"
 _REQUEST_TIMEOUT: float = 30.0
 
+# Structured, no-auth context feeds. These are ingested as contextual
+# natural-hazard signals so the broader scoring layer can decide how to use
+# them without this scraper owning the weighting policy.
+GDACS_RSS_URL: str = "https://www.gdacs.org/contentdata/xml/rss_7d.xml"
+USGS_EARTHQUAKE_FEED_URL: str = (
+    "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson"
+)
+EONET_EVENTS_URL: str = (
+    "https://eonet.gsfc.nasa.gov/api/v3/events/geojson"
+    "?status=open&days=14&limit=100"
+)
+
 
 # ---------------------------------------------------------------------------
 # Service
@@ -117,8 +131,6 @@ class OSINTScraperService:
         Returns:
             Combined list of normalized signal dicts from every source.
         """
-        all_items: list[dict[str, Any]] = []
-
         scrapers = [
             ("RSS feeds", self.scrape_rss_feeds),
             ("Telegram channels", self.scrape_telegram_channels),
@@ -129,15 +141,28 @@ class OSINTScraperService:
             ("Mastodon", self.scrape_mastodon),
             ("Bluesky", self.scrape_bluesky),
             ("Nitter/X", self.scrape_nitter),
+            ("GDACS", self.scrape_gdacs),
+            ("USGS earthquakes", self.scrape_usgs_earthquakes),
+            ("NASA EONET", self.scrape_eonet),
         ]
 
-        for name, scraper in scrapers:
+        all_items: list[dict[str, Any]] = []
+        results = await asyncio.gather(
+            *(scraper() for _, scraper in scrapers),
+            return_exceptions=True,
+        )
+
+        for (name, _), result in zip(scrapers, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning("OSINT %s: scraper failed", name, exc_info=result)
+                continue
+
+            items = result
             try:
-                items = await scraper()
                 all_items.extend(items)
                 logger.info("OSINT %s: collected %d items", name, len(items))
             except Exception:
-                logger.warning("OSINT %s: scraper failed", name, exc_info=True)
+                logger.warning("OSINT %s: result handling failed", name, exc_info=True)
 
         logger.info("OSINT scrape complete: %d total items", len(all_items))
         return all_items
@@ -557,6 +582,64 @@ class OSINTScraperService:
             return []
 
     # ------------------------------------------------------------------
+    # GDACS RSS (structured disaster context)
+    # ------------------------------------------------------------------
+
+    async def scrape_gdacs(self) -> list[dict[str, Any]]:
+        """Fetch recent GDACS disaster alerts from the public RSS feed.
+
+        GDACS is a high-signal geospatial context source for sudden-onset
+        disasters. These items are stored as contextual natural-hazard
+        signals.
+
+        Returns:
+            List of normalized signal dicts with explicit coordinates.
+        """
+        try:
+            response = await self._client.get(GDACS_RSS_URL)
+            response.raise_for_status()
+            return _parse_gdacs_rss(response.text)
+        except Exception:
+            logger.warning("OSINT GDACS: fetch failed", exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------
+    # USGS Earthquake GeoJSON (structured disaster context)
+    # ------------------------------------------------------------------
+
+    async def scrape_usgs_earthquakes(self) -> list[dict[str, Any]]:
+        """Fetch significant recent earthquakes from the USGS GeoJSON feed.
+
+        Returns:
+            List of normalized natural-hazard context signals.
+        """
+        try:
+            response = await self._client.get(USGS_EARTHQUAKE_FEED_URL)
+            response.raise_for_status()
+            return _parse_usgs_geojson(response.json())
+        except Exception:
+            logger.warning("OSINT USGS: fetch failed", exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------
+    # NASA EONET GeoJSON (structured disaster context)
+    # ------------------------------------------------------------------
+
+    async def scrape_eonet(self) -> list[dict[str, Any]]:
+        """Fetch recent open natural events from NASA EONET.
+
+        Returns:
+            List of normalized natural-hazard context signals.
+        """
+        try:
+            response = await self._client.get(EONET_EVENTS_URL)
+            response.raise_for_status()
+            return _parse_eonet_geojson(response.json())
+        except Exception:
+            logger.warning("OSINT EONET: fetch failed", exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------
     # Deduplication
     # ------------------------------------------------------------------
 
@@ -623,6 +706,10 @@ def _normalize_item(
     published_at: str,
     latitude: float | None,
     longitude: float | None,
+    source_group: str = "osint_scrape",
+    signal_type: str = "osint_scrape",
+    source_id: str = "",
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a normalized signal dict.
 
@@ -634,18 +721,26 @@ def _normalize_item(
         published_at: ISO-8601-ish publication timestamp string.
         latitude: WGS-84 latitude or None.
         longitude: WGS-84 longitude or None.
+        source_group: High-level source family stored in the signals table.
+        signal_type: Normalized signal type used for convergence weighting.
+        source_id: Stable source-native identifier.
+        metadata: Optional source-specific structured metadata.
 
     Returns:
         Dict with standardized keys.
     """
     return {
         "source": source,
+        "source_group": source_group,
+        "signal_type": signal_type,
         "title": title,
         "description": description,
         "url": url,
         "published_at": published_at,
         "latitude": latitude,
         "longitude": longitude,
+        "source_id": source_id,
+        "metadata": metadata or {},
     }
 
 
@@ -655,6 +750,8 @@ def _normalize_item(
 
 # Common XML namespaces in Atom/RSS feeds
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
+_GEORSS_NS = "{http://www.georss.org/georss}"
+_GEO_NS = "{http://www.w3.org/2003/01/geo/wgs84_pos#}"
 
 def _parse_rss_xml(xml_text: str, feed_name: str) -> list[dict[str, Any]]:
     """Parse an RSS 2.0 or Atom feed and filter for conflict keywords.
@@ -1001,3 +1098,243 @@ def _parse_darkfeed_json(body: dict[str, Any] | list[Any] | Any) -> list[dict[st
         ))
 
     return items
+
+
+def _parse_gdacs_rss(xml_text: str) -> list[dict[str, Any]]:
+    """Parse GDACS RSS items with embedded GeoRSS coordinates."""
+    items: list[dict[str, Any]] = []
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        logger.warning("OSINT GDACS: XML parse error")
+        return items
+
+    for item_el in root.iter("item"):
+        title = _xml_text(item_el, "title")
+        description = _strip_html(_xml_text(item_el, "description"))
+        link = _xml_text(item_el, "link")
+        pub_date = _xml_text(item_el, "pubDate")
+
+        lat, lon = _extract_rss_point(item_el)
+        if lat is None or lon is None:
+            continue
+
+        categories = [
+            (cat.text or "").strip()
+            for cat in item_el.findall("category")
+            if cat.text
+        ]
+
+        items.append(_normalize_item(
+            source="gdacs_rss",
+            source_group="gdacs",
+            signal_type="natural_hazard",
+            source_id=link or title,
+            title=title[:200],
+            description=description[:500],
+            url=link,
+            published_at=pub_date,
+            latitude=lat,
+            longitude=lon,
+            metadata={"categories": categories},
+        ))
+
+    return items
+
+
+def _parse_usgs_geojson(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse the USGS GeoJSON earthquake summary feed."""
+    items: list[dict[str, Any]] = []
+
+    for feature in body.get("features", []):
+        if not isinstance(feature, dict):
+            continue
+
+        geometry = feature.get("geometry", {})
+        coordinates = geometry.get("coordinates", [])
+        if not isinstance(coordinates, list) or len(coordinates) < 2:
+            continue
+
+        lon = _coerce_float(coordinates[0])
+        lat = _coerce_float(coordinates[1])
+        if lat is None or lon is None:
+            continue
+
+        props = feature.get("properties", {})
+        mag = props.get("mag")
+        place = props.get("place", "")
+        title = props.get("title") or (
+            f"M{mag:.1f} earthquake" if isinstance(mag, (int, float)) else "Earthquake"
+        )
+        published_at = _epoch_millis_to_iso(props.get("time"))
+        url = props.get("url", "")
+
+        items.append(_normalize_item(
+            source="usgs_earthquakes",
+            source_group="usgs",
+            signal_type="natural_hazard",
+            source_id=feature.get("id", "") or url or title,
+            title=title[:200],
+            description=str(place)[:500],
+            url=url,
+            published_at=published_at,
+            latitude=lat,
+            longitude=lon,
+            metadata={
+                "magnitude": mag,
+                "place": place,
+                "alert": props.get("alert"),
+                "event_type": props.get("type"),
+                "felt_reports": props.get("felt"),
+                "tsunami": props.get("tsunami"),
+            },
+        ))
+
+    return items
+
+
+def _parse_eonet_geojson(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse the NASA EONET GeoJSON events feed."""
+    items: list[dict[str, Any]] = []
+
+    for feature in body.get("features", []):
+        if not isinstance(feature, dict):
+            continue
+
+        props = feature.get("properties", {})
+        geometry = feature.get("geometry", {})
+        lat, lon = _extract_geojson_centroid(geometry)
+        if lat is None or lon is None:
+            continue
+
+        categories = _extract_titles(props.get("categories", []))
+        sources = _extract_titles(props.get("sources", []), key="id")
+        url = props.get("link", "")
+        if not url and isinstance(props.get("sources"), list) and props["sources"]:
+            first_source = props["sources"][0]
+            if isinstance(first_source, dict):
+                url = str(first_source.get("url", ""))
+
+        description = props.get("description") or ", ".join(categories) or "Natural event"
+        published_at = (
+            props.get("date")
+            or props.get("closed")
+            or _first_geometry_date(props.get("geometryDates"))
+            or ""
+        )
+
+        items.append(_normalize_item(
+            source="eonet",
+            source_group="eonet",
+            signal_type="natural_hazard",
+            source_id=str(props.get("id") or feature.get("id") or url or props.get("title", "")),
+            title=str(props.get("title", "Natural event"))[:200],
+            description=str(description)[:500],
+            url=url,
+            published_at=str(published_at),
+            latitude=lat,
+            longitude=lon,
+            metadata={
+                "categories": categories,
+                "sources": sources,
+                "closed": props.get("closed"),
+                "magnitude_value": props.get("magnitudeValue"),
+                "magnitude_unit": props.get("magnitudeUnit"),
+                "magnitude_description": props.get("magnitudeDescription"),
+            },
+        ))
+
+    return items
+
+
+def _extract_rss_point(item_el: ET.Element) -> tuple[float | None, float | None]:
+    """Extract a point from GeoRSS or WGS84 geo RSS fields."""
+    georss_point = _xml_text(item_el, f"{_GEORSS_NS}point")
+    if georss_point:
+        parts = georss_point.split()
+        if len(parts) >= 2:
+            lat = _coerce_float(parts[0])
+            lon = _coerce_float(parts[1])
+            if lat is not None and lon is not None:
+                return lat, lon
+
+    lat = _coerce_float(_xml_text(item_el, f"{_GEO_NS}lat"))
+    lon = _coerce_float(_xml_text(item_el, f"{_GEO_NS}long"))
+    return lat, lon
+
+
+def _extract_geojson_centroid(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
+    """Extract a representative point from a GeoJSON geometry."""
+    geom_type = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+
+    if geom_type == "Point" and isinstance(coordinates, list) and len(coordinates) >= 2:
+        lon = _coerce_float(coordinates[0])
+        lat = _coerce_float(coordinates[1])
+        return lat, lon
+
+    points = _flatten_geojson_points(coordinates)
+    if not points:
+        return None, None
+
+    lon = sum(point[0] for point in points) / len(points)
+    lat = sum(point[1] for point in points) / len(points)
+    return lat, lon
+
+
+def _flatten_geojson_points(coordinates: Any) -> list[tuple[float, float]]:
+    """Flatten nested GeoJSON coordinate arrays into lon/lat pairs."""
+    points: list[tuple[float, float]] = []
+
+    if not isinstance(coordinates, list):
+        return points
+
+    if len(coordinates) >= 2 and all(isinstance(value, (int, float)) for value in coordinates[:2]):
+        lon = _coerce_float(coordinates[0])
+        lat = _coerce_float(coordinates[1])
+        if lon is not None and lat is not None:
+            points.append((lon, lat))
+        return points
+
+    for child in coordinates:
+        points.extend(_flatten_geojson_points(child))
+
+    return points
+
+
+def _coerce_float(value: Any) -> float | None:
+    """Coerce a scalar to float, returning None on failure."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _epoch_millis_to_iso(value: Any) -> str:
+    """Convert epoch milliseconds to an ISO-8601 UTC timestamp."""
+    try:
+        if value is None:
+            return ""
+        ts = float(value) / 1000.0
+        return datetime.fromtimestamp(ts, tz=UTC).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+
+
+def _extract_titles(entries: list[Any], key: str = "title") -> list[str]:
+    """Extract a list of text labels from structured dict entries."""
+    titles: list[str] = []
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get(key):
+            titles.append(str(entry[key]))
+    return titles
+
+
+def _first_geometry_date(value: Any) -> str | None:
+    """Return the first geometry date from an EONET geometryDates array."""
+    if isinstance(value, list) and value:
+        first = value[0]
+        if first:
+            return str(first)
+    return None

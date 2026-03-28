@@ -36,6 +36,10 @@ BEAT_SCHEDULE = {
         "task": "app.workers.tasks.ingest_aisstream.run",
         "schedule": crontab(minute="*/30"),
     },
+    "ingest-firms-every-6h": {
+        "task": "app.workers.tasks.ingest_firms.run",
+        "schedule": crontab(minute=10, hour="*/6"),
+    },
     "trigger-sentinel2-daily": {
         "task": "app.workers.tasks.ingest_sentinel2.trigger_scene_jobs",
         "schedule": crontab(minute=0, hour=3),  # 3am UTC

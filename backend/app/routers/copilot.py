@@ -716,8 +716,9 @@ async def _tool_signal_summary(session: AsyncSession) -> list[dict]:
 
 
 def _tool_nearby_infrastructure(params: dict) -> dict:
-    """Find military airfields and nearest city to a point."""
+    """Find military airfields, nearest city, and maritime context for a point."""
     from app.services.reference_data import find_nearby_airfields, find_nearest_city
+    from app.services.maritime_ref import get_maritime_context
 
     lat = params["lat"]
     lon = params["lon"]
@@ -725,11 +726,13 @@ def _tool_nearby_infrastructure(params: dict) -> dict:
 
     city = find_nearest_city(lat, lon, max_km=100)
     airfields = find_nearby_airfields(lat, lon, max_km=radius)
+    maritime = get_maritime_context(lat, lon)
 
     return {
         "nearest_city": city,
         "military_airfields": airfields[:10],
         "airfield_count": len(airfields),
+        "maritime": maritime,
     }
 
 

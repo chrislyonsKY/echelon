@@ -22,7 +22,9 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan — startup and shutdown."""
     logger.info("Echelon API starting up")
     from app.services.reference_data import load_reference_data
+    from app.services.maritime_ref import load_maritime_data
     await load_reference_data()
+    await load_maritime_data()
     yield
     logger.info("Echelon API shutting down")
     await engine.dispose()
