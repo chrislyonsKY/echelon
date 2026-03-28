@@ -20,6 +20,9 @@ httpx==0.27.2
 # Anthropic SDK (copilot BYOK proxy)
 anthropic>=0.86.0
 
+# WebSocket client (AISStream real-time AIS)
+websockets>=12.0
+
 # Configuration
 pydantic-settings==2.5.2
 

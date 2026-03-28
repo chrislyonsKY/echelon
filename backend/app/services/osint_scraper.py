@@ -125,6 +125,10 @@ class OSINTScraperService:
             ("Reddit", self.scrape_reddit),
             ("ReliefWeb", self.scrape_reliefweb),
             ("Clearnet aggregators", self.scrape_onion_aggregators),
+            ("YouTube", self.scrape_youtube),
+            ("Mastodon", self.scrape_mastodon),
+            ("Bluesky", self.scrape_bluesky),
+            ("Nitter/X", self.scrape_nitter),
         ]
 
         for name, scraper in scrapers:
@@ -282,6 +286,275 @@ class OSINTScraperService:
             )
 
         return results
+
+    # ------------------------------------------------------------------
+    # YouTube (Data API v3)
+    # ------------------------------------------------------------------
+
+    async def scrape_youtube(self) -> list[dict[str, Any]]:
+        """Fetch recent conflict-related videos from YouTube Data API v3.
+
+        Requires ``settings.youtube_api_key`` to be set. If the key is
+        empty or missing, the scraper is silently skipped.
+
+        Returns:
+            List of normalized signal dicts filtered for conflict keywords.
+        """
+        try:
+            from app.config import settings
+            api_key = getattr(settings, "youtube_api_key", "") or ""
+            if not api_key:
+                logger.info("OSINT YouTube: no API key configured, skipping")
+                return []
+
+            results: list[dict[str, Any]] = []
+            query = "military conflict OR airstrike OR missile strike"
+            params = {
+                "part": "snippet",
+                "q": query,
+                "type": "video",
+                "order": "date",
+                "maxResults": 10,
+                "relevanceLanguage": "en",
+                "key": api_key,
+            }
+
+            response = await self._client.get(
+                "https://www.googleapis.com/youtube/v3/search",
+                params=params,
+            )
+            response.raise_for_status()
+            body = response.json()
+
+            for item in body.get("items", []):
+                snippet = item.get("snippet", {})
+                title = snippet.get("title", "")
+                description = snippet.get("description", "")
+                combined = f"{title} {description}"
+
+                if not _contains_conflict_keywords(combined):
+                    continue
+
+                video_id = item.get("id", {}).get("videoId", "")
+                url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+                published_at = snippet.get("publishedAt", "")
+
+                lat, lon = _geocode_item(combined)
+                results.append(_normalize_item(
+                    source="youtube",
+                    title=title[:200],
+                    description=description[:500],
+                    url=url,
+                    published_at=published_at,
+                    latitude=lat,
+                    longitude=lon,
+                ))
+
+            return results
+        except Exception:
+            logger.warning("OSINT YouTube: scraper failed", exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------
+    # Mastodon (public timeline tag search)
+    # ------------------------------------------------------------------
+
+    async def scrape_mastodon(self) -> list[dict[str, Any]]:
+        """Fetch conflict-related toots from public Mastodon timelines.
+
+        Searches public tag timelines on mastodon.social — no API key
+        required.
+
+        Returns:
+            List of normalized signal dicts filtered for conflict keywords.
+        """
+        try:
+            results: list[dict[str, Any]] = []
+            tags = ["osint", "geoint", "ukraine", "conflict"]
+
+            for tag in tags:
+                try:
+                    url = f"https://mastodon.social/api/v1/timelines/tag/{tag}?limit=20"
+                    response = await self._client.get(url)
+                    response.raise_for_status()
+                    toots = response.json()
+
+                    for toot in toots:
+                        raw_content = toot.get("content", "")
+                        text = _strip_html(raw_content)
+
+                        if not _contains_conflict_keywords(text):
+                            continue
+
+                        toot_url = toot.get("url", "")
+                        created_at = toot.get("created_at", "")
+
+                        lat, lon = _geocode_item(text)
+                        results.append(_normalize_item(
+                            source="mastodon",
+                            title=text[:80],
+                            description=text[:500],
+                            url=toot_url,
+                            published_at=created_at,
+                            latitude=lat,
+                            longitude=lon,
+                        ))
+                except Exception:
+                    logger.warning(
+                        "OSINT Mastodon: failed to fetch tag #%s", tag, exc_info=True
+                    )
+
+            return results
+        except Exception:
+            logger.warning("OSINT Mastodon: scraper failed", exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------
+    # Bluesky (public search API)
+    # ------------------------------------------------------------------
+
+    async def scrape_bluesky(self) -> list[dict[str, Any]]:
+        """Fetch conflict-related posts from Bluesky public search API.
+
+        Uses the unauthenticated public search endpoint — no credentials
+        required.
+
+        Returns:
+            List of normalized signal dicts filtered for conflict keywords.
+        """
+        try:
+            results: list[dict[str, Any]] = []
+            query = "military conflict OR airstrike OR missile"
+
+            response = await self._client.get(
+                "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts",
+                params={"q": query, "limit": 20},
+            )
+            response.raise_for_status()
+            body = response.json()
+
+            for post_wrapper in body.get("posts", []):
+                record = post_wrapper.get("record", {})
+                text = record.get("text", "")
+
+                if not _contains_conflict_keywords(text):
+                    continue
+
+                # Construct profile URL from AT URI
+                # URI format: at://did:plc:xxx/app.bsky.feed.post/yyy
+                uri = post_wrapper.get("uri", "")
+                author_handle = post_wrapper.get("author", {}).get("handle", "")
+                rkey = uri.rsplit("/", 1)[-1] if "/" in uri else ""
+                post_url = (
+                    f"https://bsky.app/profile/{author_handle}/post/{rkey}"
+                    if author_handle and rkey
+                    else ""
+                )
+
+                created_at = record.get("createdAt", "")
+
+                lat, lon = _geocode_item(text)
+                results.append(_normalize_item(
+                    source="bluesky",
+                    title=text[:80],
+                    description=text[:500],
+                    url=post_url,
+                    published_at=created_at,
+                    latitude=lat,
+                    longitude=lon,
+                ))
+
+            return results
+        except Exception:
+            logger.warning("OSINT Bluesky: scraper failed", exc_info=True)
+            return []
+
+    # ------------------------------------------------------------------
+    # Nitter (X/Twitter public mirrors)
+    # ------------------------------------------------------------------
+
+    NITTER_INSTANCES: list[str] = [
+        "https://nitter.privacydev.net",
+        "https://nitter.poast.org",
+    ]
+
+    async def scrape_nitter(self) -> list[dict[str, Any]]:
+        """Scrape public Nitter instances for conflict-related X/Twitter posts.
+
+        Tries multiple Nitter instances in order. If all instances are
+        unreachable (common — Nitter mirrors are notoriously unreliable),
+        logs a warning and returns an empty list.
+
+        Returns:
+            List of normalized signal dicts filtered for conflict keywords.
+        """
+        try:
+            query = "military+conflict+OR+airstrike+OR+missile"
+            html = None
+            used_instance = ""
+
+            for instance in self.NITTER_INSTANCES:
+                try:
+                    url = f"{instance}/search?q={query}&f=tweets"
+                    response = await self._client.get(url)
+                    response.raise_for_status()
+                    html = response.text
+                    used_instance = instance
+                    break
+                except Exception:
+                    logger.warning(
+                        "OSINT Nitter: instance %s unreachable", instance, exc_info=True
+                    )
+
+            if html is None:
+                logger.warning("OSINT Nitter: all instances failed, skipping")
+                return []
+
+            results: list[dict[str, Any]] = []
+
+            # Nitter tweet blocks contain class="tweet-content" for text
+            # and class="tweet-date" with <a> containing title attr for timestamps
+            tweet_texts = re.findall(
+                r'<div class="tweet-content[^"]*"[^>]*>(.*?)</div>',
+                html,
+                re.DOTALL,
+            )
+            tweet_dates = re.findall(
+                r'<span class="tweet-date"[^>]*>\s*<a[^>]*title="([^"]*)"',
+                html,
+            )
+            tweet_links = re.findall(
+                r'<a class="tweet-link"[^>]*href="([^"]*)"',
+                html,
+            )
+
+            for idx, raw_text in enumerate(tweet_texts):
+                text = _strip_html(raw_text)
+
+                if not _contains_conflict_keywords(text):
+                    continue
+
+                published_at = tweet_dates[idx] if idx < len(tweet_dates) else ""
+                relative_link = tweet_links[idx] if idx < len(tweet_links) else ""
+                tweet_url = (
+                    f"{used_instance}{relative_link}" if relative_link else ""
+                )
+
+                lat, lon = _geocode_item(text)
+                results.append(_normalize_item(
+                    source="nitter_x",
+                    title=text[:80],
+                    description=text[:500],
+                    url=tweet_url,
+                    published_at=published_at,
+                    latitude=lat,
+                    longitude=lon,
+                ))
+
+            return results
+        except Exception:
+            logger.warning("OSINT Nitter: scraper failed", exc_info=True)
+            return []
 
     # ------------------------------------------------------------------
     # Deduplication

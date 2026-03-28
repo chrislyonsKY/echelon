@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # ── BYOK encryption ───────────────────────────────────────────────────────
     byok_encryption_key: str = ""
 
+    # ── AISStream (real-time AIS) ────────────────────────────────────────────────
+    aisstream_api_key: str = ""
+
+    # ── YouTube Data API ──────────────────────────────────────────────────────
+    youtube_api_key: str = ""
+
     # ── Ollama (self-hosted LLM) ────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
 
