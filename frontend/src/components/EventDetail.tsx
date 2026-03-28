@@ -47,9 +47,9 @@ export default function EventDetail() {
 
   // Listen for custom event to open detail
   useEffect(() => {
-    const handler = (e: CustomEvent<string>) => loadEvent(e.detail);
-    window.addEventListener("echelon:open-event" as string, handler as EventListener);
-    return () => window.removeEventListener("echelon:open-event" as string, handler as EventListener);
+    const handler = (e: Event) => loadEvent((e as CustomEvent<string>).detail);
+    window.addEventListener("echelon:open-event", handler);
+    return () => window.removeEventListener("echelon:open-event", handler);
   }, []);
 
   const loadEvent = async (id: string) => {

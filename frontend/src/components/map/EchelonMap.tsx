@@ -5,7 +5,7 @@
  * Convergence heatmap rendered as circle markers from the API.
  */
 import { useRef, useCallback, useEffect, useState } from "react";
-import Map, { type MapRef, Source, Layer, type MapLayerMouseEvent, type RasterSourceSpecification } from "react-map-gl/maplibre";
+import Map, { type MapRef, Source, Layer, type MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { useEchelonStore } from "@/store/echelonStore";
 import { convergenceApi, signalsApi, type ConvergenceTile, type SignalEvent } from "@/services/api";
 import { cellToLatLng } from "h3-js";

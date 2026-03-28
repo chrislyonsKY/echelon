@@ -4,7 +4,7 @@
  */
 import { useState, useCallback } from "react";
 import { useEchelonStore } from "@/store/echelonStore";
-import { format, subDays, subHours } from "date-fns";
+import { format, subHours } from "date-fns";
 
 const STEPS = [
   { label: "6h", hours: 6 },
