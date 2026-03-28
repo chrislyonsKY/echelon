@@ -6,6 +6,7 @@ import { authApi } from "@/services/api";
 import { format, subDays } from "date-fns";
 import SearchBar from "./SearchBar";
 import RegionalMonitors from "./RegionalMonitors";
+import ExportMenu from "./ExportMenu";
 
 const PRESETS = [
   { label: "24h",  days: 1 },
@@ -104,6 +105,11 @@ export default function TopBar() {
 
       {/* Search */}
       <SearchBar />
+
+      <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
+
+      {/* Export */}
+      <ExportMenu />
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

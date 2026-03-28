@@ -49,11 +49,26 @@ _KEYWORD_PATTERN: re.Pattern[str] = re.compile(
 )
 
 RSS_FEEDS: dict[str, str] = {
+    # ── OSINT / Analysis ──
     "Bellingcat": "https://www.bellingcat.com/feed/",
     "Crisis Group": "https://www.crisisgroup.org/rss.xml",
     "War on the Rocks": "https://warontherocks.com/feed/",
     "Defense One": "https://www.defenseone.com/rss/all/",
     "The War Zone": "https://www.twz.com/feed",
+    # ── Major Wire / Broadcast ──
+    "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
+    "BBC World": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "AP News": "https://rsshub.app/apnews/topics/apf-topnews",
+    "AFP": "https://www.france24.com/en/rss",  # France24 carries AFP wire
+    "DW News": "https://rss.dw.com/xml/rss-en-all",
+    # ── Regional / Conflict Zone ──
+    "TASS": "https://tass.com/rss/v2.xml",
+    "Anadolu Agency": "https://www.aa.com.tr/en/rss/default?cat=world",
+    "Times of Israel": "https://www.timesofisrael.com/feed/",
+    "Kyiv Independent": "https://kyivindependent.com/feed/",
+    "The Cradle": "https://thecradle.co/feed",
+    "South China Morning Post": "https://www.scmp.com/rss/91/feed",
+    "NK News": "https://www.nknews.org/feed/",
 }
 
 HTML_SOURCES: dict[str, str] = {

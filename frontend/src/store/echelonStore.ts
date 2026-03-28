@@ -108,6 +108,9 @@ interface EchelonState {
   sidebarOpen: boolean;
   sidebarTab: "layers" | "timeline" | "signals";
 
+  // Basemap
+  basemapStyle: string;
+
   // Auth state
   user: User | null;
   authLoading: boolean;
@@ -117,6 +120,7 @@ interface EchelonState {
   setSelectedCell: (cell: SelectedCell | null) => void;
   toggleLayer: (layer: keyof LayerVisibility) => void;
   setSignalWeight: (signal: keyof SignalWeights, value: number) => void;
+  setBasemapStyle: (style: string) => void;
   setDateRange: (from: Date, to: Date) => void;
   applyMapAction: (action: MapAction) => void;
   addCopilotMessage: (message: CopilotMessage) => void;
@@ -151,10 +155,13 @@ export const useEchelonStore = create<EchelonState>()(
     alertPanelOpen: false,
     sidebarOpen: false,
     sidebarTab: "layers",
+    basemapStyle: "dark",
     user: null,
     authLoading: true,
 
     // ── Actions ─────────────────────────────────────────────────────────────
+    setBasemapStyle: (style) => set({ basemapStyle: style }),
+
     setViewState: (viewState) => {
       // Derive active H3 resolution from zoom level
       const zoom = viewState.zoom ?? 2;

@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine
-from app.routers import auth, convergence, signals, copilot, alerts, health, evidence
+from app.routers import auth, convergence, signals, copilot, alerts, health, evidence, export
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
     app.include_router(health.router, prefix="/api/health", tags=["health"])
     app.include_router(evidence.router, prefix="/api/evidence", tags=["evidence"])
+    app.include_router(export.router, prefix="/api/export", tags=["export"])
 
     return app
 

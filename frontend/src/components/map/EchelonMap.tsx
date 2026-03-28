@@ -11,6 +11,10 @@ import { convergenceApi, signalsApi, type ConvergenceTile, type SignalEvent } fr
 import { cellToLatLng } from "h3-js";
 import ConfoundersToggle from "./ConfoundersToggle";
 import TimelineScrubber from "./TimelineScrubber";
+import BasemapSwitcher, { getBasemapStyleUrl } from "./BasemapSwitcher";
+import MeasureTools from "./MeasureTools";
+import SunCalcTool from "./SunCalc";
+import ExifDropZone from "./ExifDropZone";
 
 const MAPLIBRE_STYLE = "https://tiles.openfreemap.org/styles/dark";
 const REFRESH_MS = 15 * 60 * 1000;
@@ -23,6 +27,7 @@ export default function EchelonMap() {
     setSelectedCell,
     activeResolution,
     dateRange,
+    basemapStyle,
   } = useEchelonStore();
 
   const [tiles, setTiles] = useState<ConvergenceTile[]>([]);
@@ -86,7 +91,7 @@ export default function EchelonMap() {
         ref={mapRef}
         {...viewState}
         onMove={evt => setViewState(evt.viewState)}
-        mapStyle={MAPLIBRE_STYLE}
+        mapStyle={getBasemapStyleUrl(basemapStyle)}
         attributionControl={false}
         interactiveLayerIds={["convergence-circles"]}
         onClick={handleClick}
@@ -196,8 +201,12 @@ export default function EchelonMap() {
 
       <ConvergenceLegend />
       <SignalLegend />
+      <MeasureTools mapRef={mapRef} />
+      <SunCalcTool mapRef={mapRef} />
+      <ExifDropZone />
       <ConfoundersToggle mapRef={mapRef} />
       <TimelineScrubber />
+      <BasemapSwitcher />
 
       <div style={{
         position: "absolute", bottom: 8, right: 320, fontSize: 8,
