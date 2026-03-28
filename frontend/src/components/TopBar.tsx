@@ -30,13 +30,13 @@ export default function TopBar() {
         height: "var(--topbar-height)",
         background: "var(--color-surface)",
         borderBottom: "1px solid var(--color-border)",
+        boxShadow: "0 1px 8px rgba(0, 0, 0, 0.4)",
         display: "flex",
         alignItems: "center",
         padding: "0 20px",
         gap: 16,
         flexShrink: 0,
         zIndex: 10,
-        backdropFilter: "blur(12px)",
       }}
     >
       {/* Branding */}

@@ -68,7 +68,7 @@ export default function EventFeed() {
         right: 16,
         width: 300,
         maxHeight: collapsed ? 36 : 340,
-        background: "rgba(13,19,32,0.92)",
+        background: "rgba(17,24,39,0.95)",
         border: "1px solid var(--color-border)",
         borderRadius: 8,
         overflow: "hidden",

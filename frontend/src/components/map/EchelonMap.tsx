@@ -134,12 +134,12 @@ export default function EchelonMap() {
               "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3, 5, 6, 8, 10, 12, 16],
               "circle-color": [
                 "interpolate", ["linear"], ["get", "score"],
-                0, "#1e3a5f",
-                0.2, "#2563eb",
-                0.5, "#eab308",
+                0, "#1e40af",
+                0.2, "#3b82f6",
+                0.5, "#f59e0b",
                 1.0, "#f97316",
                 2.0, "#ef4444",
-                4.0, "#a855f7",
+                4.0, "#c084fc",
               ],
               "circle-opacity": 0.9,
               "circle-stroke-width": ["interpolate", ["linear"], ["get", "score"], 0, 0, 0.5, 1, 2, 1.5],
@@ -174,11 +174,11 @@ export default function EchelonMap() {
               "circle-radius": 4,
               "circle-color": [
                 "match", ["get", "source"],
-                "gdelt", "#f87171",
-                "gfw", "#60a5fa",
-                "newsdata", "#fbbf24",
-                "osm", "#34d399",
-                "opensky", "#22d3ee",
+                "gdelt", "#ef4444",
+                "gfw", "#3b82f6",
+                "newsdata", "#f59e0b",
+                "osm", "#10b981",
+                "opensky", "#06b6d4",
                 "#94a3b8",
               ],
               "circle-opacity": 0.95,
@@ -192,7 +192,7 @@ export default function EchelonMap() {
       {isLoading && (
         <div role="status" style={{
           position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(13,19,32,0.9)", color: "var(--color-text-muted)",
+          background: "rgba(17,24,39,0.92)", color: "var(--color-text-muted)",
           padding: "5px 14px", borderRadius: 6, fontSize: 11,
           border: "1px solid var(--color-border)", backdropFilter: "blur(8px)",
         }}>
@@ -254,7 +254,7 @@ function ConvergenceLegend() {
   return (
     <div aria-label="Convergence legend" style={{
       position: "absolute", bottom: 32, left: 16,
-      background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
+      background: "rgba(17,24,39,0.95)", border: "1px solid var(--color-border)",
       borderRadius: 8, padding: "10px 14px", backdropFilter: "blur(8px)",
     }}>
       <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--color-text-primary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -280,7 +280,7 @@ function SignalLegend() {
   return (
     <div style={{
       position: "absolute", bottom: 32, left: 160,
-      background: "rgba(13,19,32,0.92)", border: "1px solid var(--color-border)",
+      background: "rgba(17,24,39,0.95)", border: "1px solid var(--color-border)",
       borderRadius: 8, padding: "10px 14px", backdropFilter: "blur(8px)",
     }}>
       <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--color-text-primary)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
