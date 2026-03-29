@@ -38,6 +38,23 @@ def _get_redis():
     return redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
 
+def _get_last_run(r: redis.Redis, key: str) -> datetime | None:
+    """Resolve the last successful execution time for one logical source."""
+    candidate_keys = [f"echelon:ingest:{key}:last_run"]
+    if key == "newsdata":
+        candidate_keys.append("echelon:ingest:news:last_run")
+
+    for candidate in candidate_keys:
+        raw = r.get(candidate)
+        if not raw:
+            continue
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+    return None
+
+
 @router.get("/sources")
 async def get_source_health(
     session: AsyncSession = Depends(get_session),
@@ -71,13 +88,7 @@ async def get_source_health(
         key = src["key"]
 
         # Read last_run from Redis
-        last_run_str = r.get(f"echelon:ingest:{key}:last_run")
-        last_run = None
-        if last_run_str:
-            try:
-                last_run = datetime.fromisoformat(last_run_str)
-            except ValueError:
-                pass
+        last_run = _get_last_run(r, key)
 
         # DB stats
         stats = db_stats.get(key)

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 import h3
 import orjson
+import redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -22,6 +23,7 @@ from app.services.convergence_scorer import SIGNAL_WEIGHTS
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+REDIS_LAST_RUN_KEY = "echelon:ingest:aisstream:last_run"
 
 # Pre-defined conflict zone bounding boxes (west, south, east, north)
 # Maritime-focused regions where vessel tracking is analytically meaningful
@@ -91,6 +93,7 @@ async def _ingest() -> dict:
 
     if not positions:
         logger.info("AISStream: no positions collected")
+        _set_redis_last_run(datetime.now(timezone.utc).isoformat())
         return {"inserted": 0, "skipped": 0, "total": 0}
 
     # Build signal rows
@@ -149,4 +152,14 @@ async def _ingest() -> dict:
         "AISStream ingestion complete: %d inserted, %d skipped, %d total positions",
         inserted, skipped, len(positions),
     )
+    _set_redis_last_run(datetime.now(timezone.utc).isoformat())
     return {"inserted": inserted, "skipped": skipped, "total": len(positions)}
+
+
+def _set_redis_last_run(value: str) -> None:
+    """Record successful task execution for source-health telemetry."""
+    client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        client.set(REDIS_LAST_RUN_KEY, value)
+    finally:
+        client.close()

@@ -14,6 +14,7 @@ from typing import Any
 
 import h3
 import orjson
+import redis
 from dateutil import parser as date_parser
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -25,6 +26,7 @@ from app.services.osint_scraper import OSINTScraperService
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+REDIS_LAST_RUN_KEY = "echelon:ingest:osint_scrape:last_run"
 
 _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
@@ -145,6 +147,7 @@ async def _ingest() -> dict:
         "OSINT scrape ingestion complete — %d inserted/%d skipped out of %d fetched",
         result["inserted"], result["skipped"], len(results),
     )
+    _set_redis_last_run(datetime.now(timezone.utc).isoformat())
     return {
         "inserted": result["inserted"],
         "skipped": result["skipped"],
@@ -230,3 +233,12 @@ def _metadata_text(metadata: dict[str, Any], key: str) -> str:
     if value in (None, ""):
         return ""
     return str(value)
+
+
+def _set_redis_last_run(value: str) -> None:
+    """Record successful task execution for source-health telemetry."""
+    client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        client.set(REDIS_LAST_RUN_KEY, value)
+    finally:
+        client.close()

@@ -2,6 +2,8 @@
 Signals router — query individual signal events by cell or bounding box.
 """
 import logging
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -13,6 +15,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _MAX_RESULTS = 500
+_MAX_TRACK_POINTS = 8000
+_TRACK_SOURCES = {"aisstream", "opensky"}
 
 
 @router.get("/event/{signal_id}")
@@ -149,6 +153,111 @@ async def get_latest_signals(
         }
         for row in result.fetchall()
     ]
+
+
+@router.get("/tracks")
+async def get_signal_tracks(
+    bbox: str = Query(description="west,south,east,north"),
+    source: str = Query(description="aisstream or opensky"),
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=2500, ge=100, le=_MAX_TRACK_POINTS),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Derive vessel or aircraft tracks from recent signal history."""
+    if source not in _TRACK_SOURCES:
+        raise HTTPException(400, "source must be 'aisstream' or 'opensky'")
+
+    try:
+        west, south, east, north = [float(x) for x in bbox.split(",")]
+    except ValueError as exc:
+        raise HTTPException(400, "bbox must be four comma-separated floats") from exc
+
+    start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+    result = await session.execute(
+        text("""
+            SELECT source_id, occurred_at,
+                   ST_Y(location::geometry) AS lat,
+                   ST_X(location::geometry) AS lon,
+                   raw_payload
+            FROM signals
+            WHERE source = :source
+              AND source_id IS NOT NULL
+              AND occurred_at >= :start_time
+              AND ST_Intersects(location, ST_MakeEnvelope(:west, :south, :east, :north, 4326))
+            ORDER BY source_id, occurred_at
+            LIMIT :limit
+        """),
+        {
+            "source": source,
+            "start_time": start_time,
+            "west": west,
+            "south": south,
+            "east": east,
+            "north": north,
+            "limit": limit,
+        },
+    )
+
+    grouped: dict[str, list] = defaultdict(list)
+    for row in result.fetchall():
+        grouped[str(row.source_id)].append(row)
+
+    features = []
+    for source_id, rows in grouped.items():
+        coordinates: list[list[float]] = []
+        latest_payload: dict | None = None
+        started_at = rows[0].occurred_at
+        ended_at = rows[-1].occurred_at
+
+        for row in rows:
+            coordinate = [row.lon, row.lat]
+            if not coordinates or coordinates[-1] != coordinate:
+                coordinates.append(coordinate)
+            if isinstance(row.raw_payload, dict):
+                latest_payload = row.raw_payload
+
+        if len(coordinates) < 2:
+            continue
+
+        properties = {
+            "source": source,
+            "sourceId": source_id,
+            "pointCount": len(coordinates),
+            "startedAt": started_at.isoformat() if started_at else None,
+            "endedAt": ended_at.isoformat() if ended_at else None,
+        }
+        if source == "aisstream":
+            properties.update({
+                "label": (latest_payload or {}).get("ship_name") or source_id,
+                "shipName": (latest_payload or {}).get("ship_name"),
+                "course": (latest_payload or {}).get("course"),
+                "heading": (latest_payload or {}).get("heading"),
+                "speed": (latest_payload or {}).get("speed"),
+            })
+        else:
+            properties.update({
+                "label": (latest_payload or {}).get("callsign") or source_id,
+                "callsign": (latest_payload or {}).get("callsign"),
+                "originCountry": (latest_payload or {}).get("origin_country"),
+                "heading": (latest_payload or {}).get("heading"),
+                "velocity": (latest_payload or {}).get("velocity"),
+                "altitude": (latest_payload or {}).get("altitude"),
+            })
+
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coordinates},
+            "properties": properties,
+        })
+
+    features.sort(
+        key=lambda feature: (
+            feature["properties"].get("pointCount") or 0,
+            feature["properties"].get("endedAt") or "",
+        ),
+        reverse=True,
+    )
+    return {"type": "FeatureCollection", "features": features}
 
 
 @router.get("/")

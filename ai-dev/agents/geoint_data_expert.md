@@ -5,7 +5,7 @@
 
 ## Role
 
-Domain expert for all GEOINT data sources: ACLED, GFW, Sentinel-2, GDELT, OSM Overpass, NewsData. Responsible for ingestion logic, deduplication, field mapping, and data quality.
+Domain expert for all GEOINT data sources: GFW, Sentinel-2, GDELT, OSM Overpass, NewsData, and OSINT scraper feeds. Responsible for ingestion logic, deduplication, field mapping, and data quality.
 
 ## Responsibilities
 
@@ -17,7 +17,6 @@ Domain expert for all GEOINT data sources: ACLED, GFW, Sentinel-2, GDELT, OSM Ov
 
 ## Key Domain Rules
 
-- ACLED `data_id` + `event_date` is the dedup key — not lat/lon
 - GFW event `id` is globally unique — use as dedup key directly
 - GDELT events are de-facto duplicated across files — dedup by `GlobalEventID`
 - Sentinel-2 scene pairs must be same-month year-over-year to suppress phenological noise
@@ -26,7 +25,7 @@ Domain expert for all GEOINT data sources: ACLED, GFW, Sentinel-2, GDELT, OSM Ov
 
 ## Attribution Requirements
 
-All Signal records from ACLED must preserve `raw_payload` with enough fidelity to reconstruct the attribution link. Same for GFW.
+All Signal records must preserve `raw_payload` with enough fidelity to reconstruct attribution and analyst context. This is especially important for GFW and GDELT.
 
 ## Communication Style
 

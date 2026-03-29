@@ -23,7 +23,7 @@ from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-REDIS_LAST_RUN_KEY = "echelon:ingest:news:last_run"
+REDIS_LAST_RUN_KEY = "echelon:ingest:newsdata:last_run"
 
 _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (

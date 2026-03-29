@@ -17,7 +17,16 @@ import Map, {
   type MapLayerMouseEvent,
 } from "react-map-gl/maplibre";
 import { useEchelonStore } from "@/store/echelonStore";
-import { convergenceApi, signalsApi, type ConvergenceTile, type SignalEvent } from "@/services/api";
+import {
+  convergenceApi,
+  signalsApi,
+  imageryApi,
+  type ConvergenceTile,
+  type SignalEvent,
+  type TrackFeatureCollection,
+  type ImageryScene,
+  type ImageryAnalysis,
+} from "@/services/api";
 import { cellToLatLng } from "h3-js";
 import { format } from "date-fns";
 import ConfoundersToggle from "./ConfoundersToggle";
@@ -27,12 +36,14 @@ import MeasureTools from "./MeasureTools";
 import SunCalcTool from "./SunCalc";
 import ExifDropZone from "./ExifDropZone";
 import CyberLayers from "./CyberLayers";
+import ImageryPanel from "./ImageryPanel";
 import { getDisplayDescription, getDisplayTitle, hasTranslation, textDirectionForRecord } from "@/utils/language";
 import { countryFlagForName } from "@/utils/countries";
 import { severityFromZScore } from "@/utils/symbology";
 
 const REFRESH_MS = 15 * 60 * 1000;
 const AIRCRAFT_ICON_ID = "opensky-aircraft-icon";
+const EMPTY_LINE_FEATURE_COLLECTION: TrackFeatureCollection = { type: "FeatureCollection", features: [] };
 
 // Source color palette — consistent across the entire app
 const SOURCE_COLORS: Record<string, { color: string; label: string }> = {
@@ -63,6 +74,22 @@ export default function EchelonMap() {
     data: Record<string, unknown>;
   } | null>(null);
   const [cursorCoord, setCursorCoord] = useState<{ lat: number; lng: number } | null>(null);
+  const [aisTracks, setAisTracks] = useState<TrackFeatureCollection>(EMPTY_LINE_FEATURE_COLLECTION);
+  const [flightTracks, setFlightTracks] = useState<TrackFeatureCollection>(EMPTY_LINE_FEATURE_COLLECTION);
+  const [imageryOpen, setImageryOpen] = useState(false);
+  const [imageryProvider, setImageryProvider] = useState<"capella" | "maxar">("capella");
+  const [imageryScenes, setImageryScenes] = useState<ImageryScene[]>([]);
+  const [imageryLoading, setImageryLoading] = useState(false);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const [imageryAnalysis, setImageryAnalysis] = useState<ImageryAnalysis | null>(null);
+  const [analyzingSceneId, setAnalyzingSceneId] = useState<string | null>(null);
+  const [imageryRefreshKey, setImageryRefreshKey] = useState(0);
+  const currentBbox = useMemo(() => viewportToBbox(viewState), [viewState]);
+  const historyHours = useMemo(() => {
+    const diffMs = dateRange.to.getTime() - dateRange.from.getTime();
+    const diffHours = Math.ceil(diffMs / (60 * 60 * 1000));
+    return Math.max(6, Math.min(72, diffHours));
+  }, [dateRange]);
 
   // Fetch convergence tiles
   useEffect(() => {
@@ -82,14 +109,78 @@ export default function EchelonMap() {
   useEffect(() => {
     const zoom = viewState.zoom ?? 2;
     if (zoom < 4) { setSignals([]); return; }
-    const span = 360 / Math.pow(2, zoom);
-    const lon = viewState.longitude ?? 0;
-    const lat = viewState.latitude ?? 0;
-    const bbox: [number, number, number, number] = [lon - span / 2, lat - span / 2, lon + span / 2, lat + span / 2];
-    signalsApi.getForBbox(bbox, "", dateRange.from.toISOString().split("T")[0], dateRange.to.toISOString().split("T")[0])
+    signalsApi.getForBbox(currentBbox, "", dateRange.from.toISOString().split("T")[0], dateRange.to.toISOString().split("T")[0])
       .then(data => setSignals(data))
       .catch(() => setSignals([]));
-  }, [viewState.zoom, viewState.longitude, viewState.latitude, dateRange]);
+  }, [viewState.zoom, currentBbox, dateRange]);
+
+  useEffect(() => {
+    const zoom = viewState.zoom ?? 2;
+    if (zoom < 5) {
+      setAisTracks(EMPTY_LINE_FEATURE_COLLECTION);
+      setFlightTracks(EMPTY_LINE_FEATURE_COLLECTION);
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all([
+      signalsApi.getTracks(currentBbox, "aisstream", historyHours),
+      signalsApi.getTracks(currentBbox, "opensky", historyHours),
+    ])
+      .then(([ais, flights]) => {
+        if (cancelled) return;
+        setAisTracks(ais);
+        setFlightTracks(flights);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAisTracks(EMPTY_LINE_FEATURE_COLLECTION);
+        setFlightTracks(EMPTY_LINE_FEATURE_COLLECTION);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewState.zoom, currentBbox, historyHours]);
+
+  useEffect(() => {
+    if (!imageryOpen) return;
+    const zoom = viewState.zoom ?? 2;
+    if (zoom < 5) {
+      setImageryScenes([]);
+      setSelectedSceneId(null);
+      return;
+    }
+
+    let cancelled = false;
+    setImageryLoading(true);
+    imageryApi.search({
+      provider: imageryProvider,
+      bbox: currentBbox,
+      dateFrom: dateRange.from.toISOString().split("T")[0],
+      dateTo: dateRange.to.toISOString().split("T")[0],
+      limit: 10,
+    })
+      .then((scenes) => {
+        if (cancelled) return;
+        setImageryScenes(scenes);
+        setSelectedSceneId((current) => current && scenes.some((scene) => scene.id === current) ? current : scenes[0]?.id ?? null);
+        setImageryAnalysis((current) => current && scenes.some((scene) => scene.id === current.sceneId) ? current : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setImageryScenes([]);
+        setSelectedSceneId(null);
+        setImageryAnalysis(null);
+      })
+      .finally(() => {
+        if (!cancelled) setImageryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageryOpen, imageryProvider, currentBbox, dateRange, imageryRefreshKey, viewState.zoom]);
 
   // Re-register aircraft icon whenever style reloads.
   useEffect(() => {
@@ -133,6 +224,10 @@ export default function EchelonMap() {
 
   const tileGeoJSON = useMemo(() => tilesToGeoJSON(tiles), [tiles]);
   const signalGeoJSON = useMemo(() => signalsToGeoJSON(signals), [signals]);
+  const imageryFootprintsGeoJSON = useMemo(
+    () => imageryOpen ? imageryScenesToGeoJSON(imageryScenes) : { type: "FeatureCollection", features: [] },
+    [imageryOpen, imageryScenes],
+  );
 
   // Click handler — works for both convergence cells and signal events
   const handleClick = useCallback((e: MapLayerMouseEvent) => {
@@ -183,6 +278,11 @@ export default function EchelonMap() {
       window.dispatchEvent(new CustomEvent("echelon:open-event", { detail: props.signalId }));
       return;
     }
+
+    if (props.sceneId) {
+      setImageryOpen(true);
+      setSelectedSceneId(String(props.sceneId));
+    }
   }, [activeResolution, setSelectedCell]);
 
   // Cursor changes on hover
@@ -200,6 +300,18 @@ export default function EchelonMap() {
     setCursorCoord({ lat: e.lngLat.lat, lng: e.lngLat.lng });
   }, []);
 
+  const handleAnalyzeScene = useCallback((scene: ImageryScene) => {
+    setSelectedSceneId(scene.id);
+    setAnalyzingSceneId(scene.id);
+    imageryApi.analyze({
+      itemUrl: scene.itemUrl,
+      bbox: scene.bbox ?? currentBbox,
+    })
+      .then(setImageryAnalysis)
+      .catch(() => setImageryAnalysis(null))
+      .finally(() => setAnalyzingSceneId(null));
+  }, [currentBbox]);
+
   return (
     <div style={{ position: "relative", flex: 1, height: "100%" }}>
       <Map
@@ -209,7 +321,7 @@ export default function EchelonMap() {
         onMouseMove={handleMouseMove}
         mapStyle={getBasemapStyleUrl(basemapStyle)}
         attributionControl={false}
-        interactiveLayerIds={["convergence-circles", "signal-dots", "opensky-aircraft"]}
+        interactiveLayerIds={["convergence-circles", "signal-dots", "opensky-aircraft", "imagery-footprints-outline"]}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -226,7 +338,7 @@ export default function EchelonMap() {
             }
           });
         }}
-      >
+        >
         {/* ── Convergence heatmap ─────────────────────────────────────── */}
         <Source id="convergence" type="geojson" data={tileGeoJSON}>
           {/* Outer glow — atmospheric effect */}
@@ -265,6 +377,62 @@ export default function EchelonMap() {
               "circle-opacity": ["interpolate", ["linear"], ["get", "score"], 0, 0.6, 0.5, 0.85, 2, 0.95],
               "circle-stroke-width": ["interpolate", ["linear"], ["get", "score"], 0, 0.5, 0.5, 1, 2, 1.5],
               "circle-stroke-color": "rgba(255,255,255,0.25)",
+            }}
+          />
+        </Source>
+
+        <Source id="ais-tracks" type="geojson" data={aisTracks}>
+          <Layer
+            id="ais-tracks-line"
+            type="line"
+            paint={{
+              "line-color": "rgba(59,130,246,0.65)",
+              "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1, 8, 2, 12, 3.5],
+              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0.25, 8, 0.5, 12, 0.7],
+            }}
+          />
+        </Source>
+
+        <Source id="flight-tracks" type="geojson" data={flightTracks}>
+          <Layer
+            id="flight-tracks-line"
+            type="line"
+            paint={{
+              "line-color": "rgba(34,211,238,0.75)",
+              "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1, 8, 2.2, 12, 3],
+              "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0.3, 8, 0.55, 12, 0.78],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+
+        <Source id="imagery-footprints" type="geojson" data={imageryFootprintsGeoJSON}>
+          <Layer
+            id="imagery-footprints-fill"
+            type="fill"
+            paint={{
+              "fill-color": [
+                "match", ["get", "provider"],
+                "capella", "rgba(14,165,233,0.16)",
+                "rgba(249,115,22,0.14)",
+              ],
+              "fill-opacity": 1,
+            }}
+          />
+          <Layer
+            id="imagery-footprints-outline"
+            type="line"
+            paint={{
+              "line-color": [
+                "match", ["get", "provider"],
+                "capella", "#38bdf8",
+                "#fb923c",
+              ],
+              "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1, 8, 1.6, 12, 2.2],
+              "line-opacity": 0.85,
             }}
           />
         </Source>
@@ -387,6 +555,48 @@ export default function EchelonMap() {
       <ConfoundersToggle mapRef={mapRef} />
       <TimelineScrubber />
       <BasemapSwitcher />
+
+      <button
+        onClick={() => setImageryOpen((open) => !open)}
+        style={{
+          position: "absolute",
+          top: 72,
+          left: 12,
+          padding: "9px 12px",
+          borderRadius: 10,
+          border: "1px solid rgba(148,163,184,0.18)",
+          background: "rgba(15,23,42,0.88)",
+          color: "var(--color-text-secondary)",
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          cursor: "pointer",
+          backdropFilter: "blur(10px)",
+          zIndex: 10,
+        }}
+      >
+        {imageryOpen ? "Hide Imagery" : "Open Imagery"}
+      </button>
+
+      <ImageryPanel
+        open={imageryOpen}
+        provider={imageryProvider}
+        loading={imageryLoading}
+        scenes={imageryScenes}
+        selectedSceneId={selectedSceneId}
+        analysis={imageryAnalysis}
+        analyzingSceneId={analyzingSceneId}
+        onClose={() => setImageryOpen(false)}
+        onProviderChange={(provider) => {
+          setImageryProvider(provider);
+          setSelectedSceneId(null);
+          setImageryAnalysis(null);
+        }}
+        onRefresh={() => setImageryRefreshKey((value) => value + 1)}
+        onSelectScene={(sceneId) => setSelectedSceneId(sceneId)}
+        onAnalyze={handleAnalyzeScene}
+      />
 
       {/* Cartographic legend */}
       <MapLegend tileCount={tiles.length} signalCount={signals.length} />
@@ -617,6 +827,27 @@ function tilesToGeoJSON(tiles: ConvergenceTile[]): GeoJSON.FeatureCollection {
   };
 }
 
+function imageryScenesToGeoJSON(scenes: ImageryScene[]): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  for (const scene of scenes) {
+    if (!scene.geometry) continue;
+    features.push({
+      type: "Feature",
+      geometry: scene.geometry,
+      properties: {
+        sceneId: scene.id,
+        provider: scene.provider,
+        title: scene.title,
+      },
+    });
+  }
+
+  return {
+    type: "FeatureCollection",
+    features,
+  };
+}
+
 function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
@@ -673,6 +904,19 @@ function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
       };
     }),
   };
+}
+
+function viewportToBbox(viewState: { longitude?: number; latitude?: number; zoom?: number }): [number, number, number, number] {
+  const zoom = viewState.zoom ?? 2;
+  const span = 360 / Math.pow(2, zoom);
+  const lon = viewState.longitude ?? 0;
+  const lat = viewState.latitude ?? 0;
+  return [
+    lon - span / 2,
+    Math.max(-85, lat - span / 2),
+    lon + span / 2,
+    Math.min(85, lat + span / 2),
+  ];
 }
 
 function asNumber(value: unknown): number | null {
