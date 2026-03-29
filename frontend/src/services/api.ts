@@ -272,6 +272,25 @@ export const alertsApi = {
   deleteAoi: (aoiId: string) => apiClient.delete<void>(`/alerts/aois/${aoiId}`),
 };
 
+// ── Provenance API ───────────────────────────────────────────────────────
+
+export interface ProvenanceEntry {
+  signalId: string;
+  source: string;
+  signalType: string;
+  occurredAt: string;
+  ingestedAt: string;
+  weight: number;
+  provenanceFamily: string;
+  confirmationPolicy: string;
+  scoreContribution: number;
+}
+
+export const provenanceApi = {
+  getProvenance: (eventId: string) =>
+    apiClient.get<ProvenanceEntry[]>(`/investigations/provenance/${eventId}`),
+};
+
 // ── Events API ───────────────────────────────────────────────────────────
 
 export interface EchelonEvent {
@@ -317,6 +336,8 @@ export interface EventDetail extends EchelonEvent {
   }>;
 }
 
+export type DebunkStatus = "not_assessed" | "false" | "duplicate" | "spoofed" | "mislocated" | "satire" | "propaganda" | "old_imagery" | "stale_repost" | "debunked";
+
 export const eventsApi = {
   list: (params?: { bbox?: string; eventType?: string; confirmation?: string; days?: number }) => {
     const qs = new URLSearchParams();
@@ -335,6 +356,121 @@ export const eventsApi = {
     apiClient.get<EchelonEvent[]>(
       `/events/for-cell/${h3Index}${days ? `?days=${days}` : ""}`
     ),
+
+  patchDebunkStatus: (eventId: string, debunkStatus: DebunkStatus, debunkReason: string) =>
+    apiClient.patch<void>(`/events/${eventId}`, { debunk_status: debunkStatus, debunk_reason: debunkReason }),
+};
+
+// ── Investigations API ───────────────────────────────────────────────────────
+
+export interface Investigation {
+  id: string;
+  title: string;
+  description?: string;
+  notes?: string;
+  tags: string[];
+  viewState: {
+    longitude: number;
+    latitude: number;
+    zoom: number;
+    pitch?: number;
+    bearing?: number;
+  };
+  dateRange: { from: string; to: string };
+  layerVisibility: Record<string, boolean>;
+  selectedCellH3?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestigationCreate {
+  title: string;
+  description?: string;
+  notes?: string;
+  tags: string[];
+  viewState: Investigation["viewState"];
+  dateRange: Investigation["dateRange"];
+  layerVisibility: Record<string, boolean>;
+  selectedCellH3?: string;
+}
+
+export interface InvestigationUpdate {
+  title?: string;
+  description?: string;
+  notes?: string;
+  tags?: string[];
+}
+
+export interface ScoringExplanation {
+  h3Index: string;
+  zScore: number;
+  rawScore: number;
+  signalBreakdown: Record<string, number>;
+  lowConfidence: boolean;
+  confidenceStatistical: number | null;
+  confidenceDiversity: number | null;
+  confidenceSensor: number | null;
+  confidenceMedia: number | null;
+  confidenceReviewed: number | null;
+  recentSignals: Array<{
+    source: string;
+    signalType: string;
+    occurredAt: string;
+    weight: number;
+  }>;
+}
+
+export type NoteType = "observation" | "assessment" | "review" | "correction" | "question";
+export type ConfidenceLevel = "high" | "medium" | "low" | "uncertain";
+
+export interface AnalystNoteEntry {
+  id: string;
+  userId: string;
+  username?: string;
+  noteType: string;
+  content: string;
+  confidence: string | null;
+  createdAt: string;
+}
+
+export const investigationsApi = {
+  list: () =>
+    apiClient.get<Investigation[]>("/investigations/"),
+
+  get: (id: string) =>
+    apiClient.get<Investigation>(`/investigations/${id}`),
+
+  create: (body: InvestigationCreate) =>
+    apiClient.post<Investigation>("/investigations/", body),
+
+  update: (id: string, body: InvestigationUpdate) =>
+    apiClient.patch<Investigation>(`/investigations/${id}`, body),
+
+  delete: (id: string) =>
+    apiClient.delete<void>(`/investigations/${id}`),
+
+  getScoring: (h3Index: string) =>
+    apiClient.get<ScoringExplanation>(`/investigations/scoring/${h3Index}`),
+
+  getNotes: (eventId: string) =>
+    apiClient.get<AnalystNoteEntry[]>(`/investigations/notes/${eventId}`),
+
+  addNote: (body: { eventId?: string; h3Index?: string; noteType: string; content: string; confidence?: string }) =>
+    apiClient.post<AnalystNoteEntry>("/investigations/notes", body),
+
+  submitFeedback: (body: { eventId?: string; h3Index?: string; signalIds?: string[]; reason: string; detail?: string }) =>
+    apiClient.post<{ id: string }>("/investigations/feedback", body),
+};
+
+// Type aliases for component compatibility
+export type AnalystNote = AnalystNoteEntry;
+
+export const notesApi = {
+  getForEvent: (eventId: string) =>
+    investigationsApi.getNotes(eventId),
+
+  create: (body: { event_id?: string; h3_index?: string; note_type: string; content: string; confidence?: string }) =>
+    apiClient.post<AnalystNote>("/investigations/notes", body),
 };
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
