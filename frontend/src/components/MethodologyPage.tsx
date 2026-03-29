@@ -141,6 +141,29 @@ const SOURCES = [
   },
 ];
 
+const IMAGERY_SOURCES = [
+  {
+    key: "capella",
+    name: "Capella Space Open Data",
+    type: "SAR (Synthetic Aperture Radar)",
+    description:
+      "X-band SAR scenes from Capella's community open-data program. Provides all-weather, day/night imaging at sub-meter resolution.",
+    caveats:
+      "Coverage is limited to scenes Capella has released publicly. Not continuous — availability depends on tasking and release schedule. Search traverses daily catalogs so wide date ranges are slower.",
+    mode: "On-demand analyst search",
+  },
+  {
+    key: "maxar",
+    name: "Maxar Open Data",
+    type: "Optical (multispectral)",
+    description:
+      "High-resolution optical imagery released by Maxar for disaster response and humanitarian events. Event-driven collections with sub-meter GSD.",
+    caveats:
+      "Coverage is event-driven and sparse by design — only areas with declared events are imaged. Collections are organized by event, not continuous geographic coverage.",
+    mode: "On-demand analyst search",
+  },
+];
+
 export default function MethodologyPage() {
   const { showMethodology, setShowMethodology } = useEchelonStore();
 
@@ -405,6 +428,91 @@ z_score(cell, t) = (raw_score - μ) / max(σ, 0.01)`}
               </p>
             </div>
           ))}
+        </Section>
+
+        {/* Satellite Imagery */}
+        <Section title="Satellite Imagery (On-Demand)">
+          <p>
+            Echelon provides analyst-driven search across two public satellite
+            imagery catalogs. These are <strong>not</strong> scored into
+            convergence — they are inspection tools for corroborating signals
+            identified by the heatmap.
+          </p>
+
+          {IMAGERY_SOURCES.map((src) => (
+            <div
+              key={src.key}
+              style={{
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 6,
+                padding: "14px 16px",
+                marginBottom: 10,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  marginBottom: 6,
+                }}
+              >
+                <h4 style={{ margin: 0, fontSize: 14 }}>{src.name}</h4>
+                <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                  {src.type} &middot; {src.mode}
+                </div>
+              </div>
+              <p style={{ margin: "4px 0", fontSize: 13, lineHeight: 1.5 }}>
+                {src.description}
+              </p>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  fontSize: 12,
+                  color: "var(--color-warning)",
+                  lineHeight: 1.5,
+                }}
+              >
+                Caveats: {src.caveats}
+              </p>
+            </div>
+          ))}
+        </Section>
+
+        {/* Derived Tracks */}
+        <Section title="Vessel & Aircraft Tracks">
+          <p>
+            Echelon derives movement tracks from AIS (vessel) and ADS-B
+            (aircraft) signal history. Tracks are <strong>not</strong> a
+            separate data source — they are reconstructed by grouping stored
+            signal points by <code>source_id</code> (MMSI for vessels, ICAO24
+            for aircraft) and ordering by timestamp.
+          </p>
+          <ul>
+            <li>
+              <strong>AIS tracks</strong>: grouped from AISStream snapshots.
+              Track smoothness depends on polling cadence (currently 30-minute
+              intervals with 60-second collection windows). Gaps between points
+              may be large.
+            </li>
+            <li>
+              <strong>ADS-B tracks</strong>: grouped from OpenSky Network
+              snapshots. Same cadence limitations apply. Military aircraft
+              frequently disappear mid-track when transponders are disabled.
+            </li>
+            <li>
+              <strong>Rendering</strong>: tracks are returned as GeoJSON
+              LineString features and rendered as map overlays. Each track
+              carries the latest known metadata (callsign, vessel name, flag
+              state where available).
+            </li>
+          </ul>
+          <p>
+            Tracks are queryable for any bounding box and time window up to 168
+            hours (7 days). They are best used for pattern-of-life analysis, not
+            real-time tracking.
+          </p>
         </Section>
 
         {/* Blind Spots */}

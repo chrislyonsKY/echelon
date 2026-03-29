@@ -35,7 +35,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Echelon API",
         description="GEOINT conflict and maritime activity monitoring dashboard",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
         docs_url="/api/docs",
         redoc_url="/api/redoc",

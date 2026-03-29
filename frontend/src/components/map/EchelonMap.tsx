@@ -27,7 +27,7 @@ import {
   type ImageryScene,
   type ImageryAnalysis,
 } from "@/services/api";
-import { cellToLatLng } from "h3-js";
+import { cellToLatLng, cellToBoundary } from "h3-js";
 import { format } from "date-fns";
 import ConfoundersToggle from "./ConfoundersToggle";
 import TimelineScrubber from "./TimelineScrubber";
@@ -46,17 +46,28 @@ const AIRCRAFT_ICON_ID = "opensky-aircraft-icon";
 const EMPTY_LINE_FEATURE_COLLECTION: TrackFeatureCollection = { type: "FeatureCollection", features: [] };
 
 // Source color palette — consistent across the entire app
-const SOURCE_COLORS: Record<string, { color: string; label: string }> = {
-  gdelt:        { color: "#ef4444", label: "GDELT Conflict" },
-  gfw:          { color: "#3b82f6", label: "Maritime (GFW)" },
-  newsdata:     { color: "#f59e0b", label: "News" },
-  osm:          { color: "#10b981", label: "Infrastructure" },
-  sentinel2:    { color: "#a855f7", label: "Earth Observation" },
-  opensky:      { color: "#06b6d4", label: "Military Aviation" },
-  osint_scrape: { color: "#f59e0b", label: "OSINT" },
-  firms:        { color: "#f97316", label: "Thermal/Fire" },
-  aisstream:    { color: "#3b82f6", label: "AIS Vessel" },
+// Weight drives dot radius: higher weight = larger point
+const SOURCE_COLORS: Record<string, { color: string; label: string; weight: number }> = {
+  gdelt:        { color: "#ef4444", label: "GDELT Conflict",     weight: 0.30 },
+  gfw:          { color: "#2563eb", label: "Maritime (GFW)",     weight: 0.35 },
+  newsdata:     { color: "#d97706", label: "News",               weight: 0.12 },
+  osm:          { color: "#059669", label: "Infrastructure",     weight: 0.08 },
+  sentinel2:    { color: "#7c3aed", label: "Earth Observation",  weight: 0.25 },
+  opensky:      { color: "#0891b2", label: "Military Aviation",  weight: 0.20 },
+  osint_scrape: { color: "#b45309", label: "OSINT",              weight: 0.12 },
+  firms:        { color: "#ea580c", label: "Thermal/Fire",       weight: 0.22 },
+  aisstream:    { color: "#1d4ed8", label: "AIS Vessel",         weight: 0.08 },
 };
+
+// Z-score color ramp — sequential, labeled breakpoints
+const Z_RAMP: { z: number; color: string; label: string }[] = [
+  { z: 0,   color: "#1e3a5f", label: "0" },
+  { z: 1,   color: "#2563eb", label: "1" },
+  { z: 2,   color: "#eab308", label: "2" },
+  { z: 3,   color: "#f97316", label: "3" },
+  { z: 5,   color: "#dc2626", label: "5" },
+  { z: 10,  color: "#7f1d1d", label: "10+" },
+];
 
 export default function EchelonMap() {
   const mapRef = useRef<MapRef>(null);
@@ -222,7 +233,8 @@ export default function EchelonMap() {
     return () => clearInterval(interval);
   }, [theaterMode, tiles, setViewState]);
 
-  const tileGeoJSON = useMemo(() => tilesToGeoJSON(tiles), [tiles]);
+  const useHex = (viewState.zoom ?? 2) >= 5;
+  const tileGeoJSON = useMemo(() => tilesToGeoJSON(tiles, useHex), [tiles, useHex]);
   const signalGeoJSON = useMemo(() => signalsToGeoJSON(signals), [signals]);
   const imageryFootprintsGeoJSON = useMemo(
     () => imageryOpen ? imageryScenesToGeoJSON(imageryScenes) : { type: "FeatureCollection", features: [] },
@@ -321,7 +333,7 @@ export default function EchelonMap() {
         onMouseMove={handleMouseMove}
         mapStyle={getBasemapStyleUrl(basemapStyle)}
         attributionControl={false}
-        interactiveLayerIds={["convergence-circles", "signal-dots", "opensky-aircraft", "imagery-footprints-outline"]}
+        interactiveLayerIds={["convergence-hex-fill", "convergence-circles", "signal-dots", "opensky-aircraft", "imagery-footprints-outline"]}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -341,42 +353,66 @@ export default function EchelonMap() {
         >
         {/* ── Convergence heatmap ─────────────────────────────────────── */}
         <Source id="convergence" type="geojson" data={tileGeoJSON}>
-          {/* Outer glow — atmospheric effect */}
+          {/* H3 hex fill — rendered as polygons at zoom >= 5, circles at global */}
           <Layer
-            id="convergence-glow"
-            type="circle"
+            id="convergence-hex-fill"
+            type="fill"
+            filter={["==", ["geometry-type"], "Polygon"]}
             paint={{
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 10, 5, 20, 8, 28, 12, 36],
-              "circle-color": [
-                "interpolate", ["linear"], ["get", "score"],
-                0, "rgba(30,64,175,0)",
-                0.3, "rgba(59,130,246,0.12)",
-                0.5, "rgba(245,158,11,0.18)",
-                1.0, "rgba(249,115,22,0.22)",
-                2.0, "rgba(239,68,68,0.28)",
-                4.0, "rgba(168,85,247,0.32)",
+              "fill-color": [
+                "interpolate", ["linear"], ["get", "zScore"],
+                0, "#1e3a5f",
+                1, "#2563eb",
+                2, "#eab308",
+                3, "#f97316",
+                5, "#dc2626",
+                10, "#7f1d1d",
               ],
-              "circle-blur": 1.2,
+              "fill-opacity": ["interpolate", ["linear"], ["get", "zScore"], 0, 0.35, 1, 0.55, 3, 0.75, 5, 0.85],
             }}
           />
-          {/* Core circles */}
+          {/* Hex outline — solid for normal, dashed for low confidence */}
+          <Layer
+            id="convergence-hex-outline"
+            type="line"
+            filter={["all", ["==", ["geometry-type"], "Polygon"], ["!=", ["get", "lowConfidence"], true]]}
+            paint={{
+              "line-color": "rgba(255,255,255,0.3)",
+              "line-width": 1,
+            }}
+          />
+          <Layer
+            id="convergence-hex-outline-low"
+            type="line"
+            filter={["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "lowConfidence"], true]]}
+            paint={{
+              "line-color": "rgba(234,179,8,0.6)",
+              "line-width": 1.5,
+              "line-dasharray": [3, 2],
+            }}
+          />
+          {/* Fallback circles at global zoom (< 5) */}
           <Layer
             id="convergence-circles"
             type="circle"
+            filter={["==", ["geometry-type"], "Point"]}
             paint={{
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3.5, 5, 7, 8, 11, 12, 16],
+              "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 3.5, 4, 6],
               "circle-color": [
-                "interpolate", ["linear"], ["get", "score"],
-                0, "#1e40af",
-                0.15, "#3b82f6",
-                0.4, "#f59e0b",
-                0.8, "#f97316",
-                1.5, "#ef4444",
-                3.0, "#c084fc",
+                "interpolate", ["linear"], ["get", "zScore"],
+                0, "#1e3a5f",
+                1, "#2563eb",
+                2, "#eab308",
+                3, "#f97316",
+                5, "#dc2626",
+                10, "#7f1d1d",
               ],
-              "circle-opacity": ["interpolate", ["linear"], ["get", "score"], 0, 0.6, 0.5, 0.85, 2, 0.95],
-              "circle-stroke-width": ["interpolate", ["linear"], ["get", "score"], 0, 0.5, 0.5, 1, 2, 1.5],
-              "circle-stroke-color": "rgba(255,255,255,0.25)",
+              "circle-opacity": ["interpolate", ["linear"], ["get", "zScore"], 0, 0.5, 1, 0.7, 3, 0.9],
+              "circle-stroke-width": ["case", ["==", ["get", "lowConfidence"], true], 1.5, 0.5],
+              "circle-stroke-color": ["case",
+                ["==", ["get", "lowConfidence"], true], "rgba(234,179,8,0.6)",
+                "rgba(255,255,255,0.2)",
+              ],
             }}
           />
         </Source>
@@ -439,47 +475,33 @@ export default function EchelonMap() {
 
         {/* ── Signal events ──────────────────────────────────────────── */}
         <Source id="signals" type="geojson" data={signalGeoJSON}>
-          {/* Glow ring */}
-          <Layer
-            id="signal-glow"
-            type="circle"
-            filter={["!=", ["get", "source"], "opensky"]}
-            paint={{
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 8, 8, 12, 12, 16],
-              "circle-color": [
-                "match", ["get", "source"],
-                "gdelt", "rgba(239,68,68,0.2)",
-                "gfw", "rgba(59,130,246,0.2)",
-                "newsdata", "rgba(245,158,11,0.2)",
-                "osm", "rgba(16,185,129,0.15)",
-                "osint_scrape", "rgba(245,158,11,0.15)",
-                "firms", "rgba(249,115,22,0.2)",
-                "rgba(148,163,184,0.12)",
-              ],
-              "circle-blur": 0.8,
-            }}
-          />
-          {/* Core dots */}
+          {/* Signal dots — sized by source weight, colored by source */}
           <Layer
             id="signal-dots"
             type="circle"
             filter={["!=", ["get", "source"], "opensky"]}
             paint={{
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 8, 5, 12, 7],
+              "circle-radius": [
+                "interpolate", ["linear"], ["zoom"],
+                4, ["*", ["get", "sourceWeight"], 12],
+                8, ["*", ["get", "sourceWeight"], 18],
+                12, ["*", ["get", "sourceWeight"], 24],
+              ],
               "circle-color": [
                 "match", ["get", "source"],
                 "gdelt", "#ef4444",
-                "gfw", "#3b82f6",
-                "newsdata", "#f59e0b",
-                "osm", "#10b981",
-                "osint_scrape", "#f59e0b",
-                "firms", "#f97316",
-                "aisstream", "#3b82f6",
-                "#94a3b8",
+                "gfw", "#2563eb",
+                "newsdata", "#d97706",
+                "osm", "#059669",
+                "osint_scrape", "#b45309",
+                "firms", "#ea580c",
+                "aisstream", "#1d4ed8",
+                "sentinel2", "#7c3aed",
+                "#64748b",
               ],
-              "circle-opacity": 0.92,
-              "circle-stroke-width": 1,
-              "circle-stroke-color": "rgba(255,255,255,0.5)",
+              "circle-opacity": 0.88,
+              "circle-stroke-width": 0.75,
+              "circle-stroke-color": "rgba(255,255,255,0.35)",
             }}
           />
           <Layer
@@ -753,15 +775,19 @@ function PopupRow({ label, value, mono, highlight }: {
 
 // ── Map legend ────────────────────────────────────────────────────────────────
 
-function MapLegend(_props: { tileCount: number; signalCount: number }) {
+function MapLegend({ tileCount, signalCount }: { tileCount: number; signalCount: number }) {
   const [collapsed, setCollapsed] = useState(false);
+  const legendHeading: React.CSSProperties = {
+    fontSize: 8, fontWeight: 700, color: "var(--color-text-muted)",
+    textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, marginTop: 8,
+  };
 
   return (
     <div style={{
       position: "absolute", bottom: 40, left: 12,
-      background: "rgba(17,24,39,0.92)", border: "1px solid var(--color-border)",
+      background: "rgba(17,24,39,0.94)", border: "1px solid var(--color-border)",
       borderRadius: 8, backdropFilter: "blur(8px)",
-      overflow: "hidden", minWidth: collapsed ? 80 : 150,
+      overflow: "hidden", minWidth: collapsed ? 80 : 170,
     }}>
       <button
         onClick={() => setCollapsed(!collapsed)}
@@ -780,29 +806,54 @@ function MapLegend(_props: { tileCount: number; signalCount: number }) {
 
       {!collapsed && (
         <div style={{ padding: "0 12px 10px" }}>
-          {/* Convergence ramp */}
-          <div style={{ fontSize: 8, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", marginBottom: 4, letterSpacing: "0.05em" }}>
-            Convergence Z-Score
-          </div>
-          <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 2 }}>
-            {["#1e40af", "#3b82f6", "#f59e0b", "#f97316", "#ef4444", "#c084fc"].map((c, i) => (
-              <div key={i} style={{ flex: 1, background: c }} />
+          {/* Convergence Z-Score ramp with labeled breakpoints */}
+          <div style={legendHeading}>Convergence Z-Score</div>
+          <div style={{ display: "flex", height: 10, borderRadius: 2, overflow: "hidden", marginBottom: 2 }}>
+            {Z_RAMP.map((stop, i) => (
+              <div key={i} style={{ flex: 1, background: stop.color }} />
             ))}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "var(--color-text-muted)", marginBottom: 8 }}>
-            <span>Low</span><span>High</span>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+            {Z_RAMP.map((stop) => (
+              <span key={stop.z}>{stop.label}</span>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+            <div style={{ width: 14, height: 8, border: "1.5px dashed rgba(234,179,8,0.7)", borderRadius: 1 }} />
+            <span style={{ fontSize: 8, color: "var(--color-text-muted)" }}>Low confidence (&lt;30 obs)</span>
           </div>
 
-          {/* Signal sources */}
-          <div style={{ fontSize: 8, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", marginBottom: 4, letterSpacing: "0.05em" }}>
-            Signal Sources
-          </div>
-          {Object.entries(SOURCE_COLORS).slice(0, 6).map(([, meta]) => (
+          {/* Signal sources — all types, dot size reflects weight */}
+          <div style={legendHeading}>Signal Sources</div>
+          {Object.entries(SOURCE_COLORS).map(([, meta]) => (
             <div key={meta.label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: meta.color, flexShrink: 0 }} />
+              <div style={{
+                width: 4 + meta.weight * 16,
+                height: 4 + meta.weight * 16,
+                borderRadius: "50%",
+                background: meta.color,
+                flexShrink: 0,
+                border: "0.5px solid rgba(255,255,255,0.25)",
+              }} />
               <span style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>{meta.label}</span>
             </div>
           ))}
+
+          {/* Track lines */}
+          <div style={legendHeading}>Tracks</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <div style={{ width: 18, height: 0, borderTop: "2px solid rgba(59,130,246,0.65)" }} />
+            <span style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>AIS Vessel</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <div style={{ width: 18, height: 0, borderTop: "2px solid rgba(34,211,238,0.75)" }} />
+            <span style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>ADS-B Flight</span>
+          </div>
+
+          {/* Counts */}
+          <div style={{ marginTop: 6, fontSize: 8, color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+            {tileCount} cells | {signalCount} signals
+          </div>
         </div>
       )}
     </div>
@@ -811,19 +862,36 @@ function MapLegend(_props: { tileCount: number; signalCount: number }) {
 
 // ── GeoJSON builders ──────────────────────────────────────────────────────────
 
-function tilesToGeoJSON(tiles: ConvergenceTile[]): GeoJSON.FeatureCollection {
+function tilesToGeoJSON(tiles: ConvergenceTile[], useHex: boolean): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
     features: tiles.map(t => {
+      if (useHex) {
+        // Render as H3 hex polygon
+        try {
+          const boundary = cellToBoundary(t.h3Index);
+          // h3 returns [lat, lng] pairs — flip to [lng, lat] for GeoJSON
+          const ring = boundary.map(([la, ln]) => [ln, la]);
+          ring.push(ring[0]); // close the ring
+          return {
+            type: "Feature" as const,
+            geometry: { type: "Polygon" as const, coordinates: [ring] },
+            properties: { h3Index: t.h3Index, zScore: t.zScore, rawScore: t.rawScore, lowConfidence: t.lowConfidence },
+          };
+        } catch { /* fall through to point */ }
+      }
+      // Fallback: centroid point at global zoom
       let lat = 0, lng = 0;
       try { const [la, ln] = cellToLatLng(t.h3Index); lat = la; lng = ln; } catch { /* skip */ }
-      const score = t.lowConfidence ? t.rawScore * 3 : t.zScore;
       return {
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [lng, lat] },
-        properties: { h3Index: t.h3Index, zScore: t.zScore, rawScore: t.rawScore, score, lowConfidence: t.lowConfidence },
+        properties: { h3Index: t.h3Index, zScore: t.zScore, rawScore: t.rawScore, lowConfidence: t.lowConfidence },
       };
-    }).filter(f => f.geometry.coordinates[0] !== 0),
+    }).filter(f => {
+      if (f.geometry.type === "Point") return f.geometry.coordinates[0] !== 0;
+      return true;
+    }),
   };
 }
 
@@ -887,6 +955,7 @@ function signalsToGeoJSON(signals: SignalEvent[]): GeoJSON.FeatureCollection {
         properties: {
           signalId: s.id,
           source: s.source,
+          sourceWeight: SOURCE_COLORS[s.source]?.weight ?? 0.1,
           signalType: s.signalType,
           title,
           textDirection,

@@ -69,6 +69,12 @@ An AI copilot (BYOK — bring your own key) can query all data sources via natur
 | UN ReliefWeb | Humanitarian reports | 0.12 | 2h |
 | RansomWatch | Dark web monitoring (clearnet) | 0.12 | 2h |
 
+### Satellite Imagery (on-demand)
+| Source | Signal | Mode |
+|--------|--------|------|
+| [Capella Space](https://www.capellaspace.com/community/) | SAR open-data scenes | Analyst search + raster analysis |
+| [Maxar Open Data](https://www.maxar.com/open-data/) | Event-driven optical imagery | Analyst search + raster analysis |
+
 ### Reference Data (loaded at startup)
 | Source | Records | Purpose |
 |--------|---------|---------|
@@ -82,6 +88,8 @@ An AI copilot (BYOK — bring your own key) can query all data sources via natur
 
 - **Convergence heatmap** — H3 hexagonal cells colored by Z-score. Click any cell to investigate.
 - **Investigation sidebar** — narrative summary of signals in a cell, grouped by source with event details.
+- **Satellite imagery search** — on-demand Capella SAR and Maxar open-data scene discovery with raster analysis.
+- **Vessel & aircraft tracks** — derived AIS and ADS-B track lines from signal history, rendered as map overlays.
 - **Location search** — type a place name, fly there instantly (Nominatim geocoder).
 - **Live event feed** — scrolling feed of latest signals globally. Click to fly to location.
 - **AI copilot** — BYOK with 4 providers (Anthropic Claude, OpenAI GPT-4o, Google Gemini, self-hosted Ollama). 7 tool functions query live data. Hardened guardrails prevent off-topic use.
@@ -141,6 +149,24 @@ cd echelon && git pull
 docker compose up -d --build --force-recreate
 ```
 
+## API
+
+The REST API is documented via OpenAPI at `/api/docs` (Swagger UI) and `/api/redoc`.
+
+Key endpoint groups:
+
+| Prefix | Purpose |
+|--------|---------|
+| `/api/convergence` | H3 heatmap tiles, cell detail, trend history |
+| `/api/signals` | Per-layer signal queries, derived vessel/aircraft tracks |
+| `/api/imagery` | Public satellite imagery search (Capella, Maxar) and raster analysis |
+| `/api/copilot` | BYOK AI chat proxy with tool-calling |
+| `/api/events` | Corroborated event roll-ups |
+| `/api/cyber` | Shodan, Censys, WiGLE, infrastructure queries |
+| `/api/alerts` | AOI alert management |
+| `/api/export` | GeoJSON, KML, CSV export |
+| `/api/health` | Source health telemetry |
+
 ## Architecture
 
 ```
@@ -178,6 +204,28 @@ z_score(cell)   = (raw_score - μ) / max(σ, 0.001)
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Project Docs
+
+- [Threat Model](THREAT_MODEL.md)
+- [Data Provenance](DATA_PROVENANCE.md)
+- [Responsible Use](RESPONSIBLE_USE.md)
+- [Incident Response](INCIDENT_RESPONSE.md)
+- [Deployment Hardening](DEPLOY_HARDENING.md)
+- [Attribution](ATTRIBUTION.md)
+- [Privacy](PRIVACY.md)
+- [Evidence Policy](EVIDENCE_POLICY.md)
+- [Source Intake Checklist](SOURCE_INTAKE_CHECKLIST.md)
+- [Maintainer Runbook](MAINTAINER_RUNBOOK.md)
+- [Support](SUPPORT.md)
+- [Governance](GOVERNANCE.md)
+- [Testing](TESTING.md)
+- [.env.production.example](.env.production.example)
+
+## Community
+
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
 
 ## Disclaimer
 
