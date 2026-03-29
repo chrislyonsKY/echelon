@@ -31,7 +31,7 @@ export default function CopilotPanel() {
   const [isThinking, setIsThinking] = useState(false);
   const [showKeyPrompt, setShowKeyPrompt] = useState(!byokKey);
   const [keyInput, setKeyInput] = useState("");
-  const [provider, setProvider] = useState<"anthropic" | "openai" | "google" | "ollama">("anthropic");
+  const [provider, setProvider] = useState<"anthropic" | "openai" | "google" | "ollama">("ollama");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,7 +52,8 @@ export default function CopilotPanel() {
   }, [keyInput, setByokKey]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !byokKey || isThinking) return;
+    const needsKey = provider !== "ollama";
+    if (!input.trim() || (needsKey && !byokKey) || isThinking) return;
 
     const userMessage: CopilotMessage = {
       id: crypto.randomUUID(),
@@ -85,7 +86,7 @@ export default function CopilotPanel() {
             selectedCell: selectedCell?.h3Index,
           },
         },
-        byokKey
+        byokKey || ""
       );
 
       const assistantMessage: CopilotMessage = {
@@ -130,7 +131,7 @@ export default function CopilotPanel() {
     } finally {
       setIsThinking(false);
     }
-  }, [input, byokKey, isThinking, copilotMessages, addCopilotMessage, applyMapAction, viewState, dateRange, selectedCell]);
+  }, [input, byokKey, isThinking, copilotMessages, addCopilotMessage, applyMapAction, viewState, dateRange, selectedCell, provider]);
 
   return (
     <div
@@ -152,7 +153,7 @@ export default function CopilotPanel() {
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Echelon Copilot</div>
-          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "capitalize" }}>BYOK — {provider}</div>
+          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "capitalize" }}>{provider === "ollama" ? "Self-hosted" : "BYOK"} — {provider}</div>
         </div>
         <button
           onClick={() => setCopilotOpen(false)}
@@ -230,8 +231,8 @@ export default function CopilotPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
-            placeholder={byokKey ? "Ask about conflict and maritime activity…" : "Add API key above to enable copilot"}
-            disabled={!byokKey || isThinking}
+            placeholder={(byokKey || provider === "ollama") ? "Ask about conflict and maritime activity…" : "Add API key above to enable copilot"}
+            disabled={(!byokKey && provider !== "ollama") || isThinking}
             rows={2}
             aria-label="Copilot message input"
             style={{
@@ -248,7 +249,7 @@ export default function CopilotPanel() {
           />
           <button
             onClick={handleSend}
-            disabled={!byokKey || !input.trim() || isThinking}
+            disabled={(!byokKey && provider !== "ollama") || !input.trim() || isThinking}
             aria-label="Send message"
             style={{
               background: "var(--color-accent)",
@@ -258,7 +259,7 @@ export default function CopilotPanel() {
               color: "#fff",
               cursor: "pointer",
               fontSize: 12,
-              opacity: (!byokKey || !input.trim() || isThinking) ? 0.5 : 1,
+              opacity: ((!byokKey && provider !== "ollama") || !input.trim() || isThinking) ? 0.5 : 1,
             }}
           >
             Send

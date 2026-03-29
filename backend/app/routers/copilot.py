@@ -260,7 +260,7 @@ class CopilotRequest(BaseModel):
     """Incoming copilot chat request."""
     messages: list[dict]
     map_context: dict
-    provider: str = "anthropic"  # "anthropic" | "openai" | "google"
+    provider: str = "ollama"  # "ollama" (self-hosted, no key) | "anthropic" | "openai" | "google"
 
 
 class CopilotResponse(BaseModel):
@@ -288,14 +288,15 @@ async def copilot_chat(
     if refusal:
         return CopilotResponse(content=refusal)
 
-    # SECURITY: BYOK key — do not log, do not persist beyond this scope
-    api_key = x_llm_key or x_anthropic_key
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key (X-LLM-Key or X-Anthropic-Key header)")
-
     provider = request.provider
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}. Use: {list(PROVIDERS.keys())}")
+
+    # SECURITY: BYOK key — do not log, do not persist beyond this scope
+    # Ollama is self-hosted and requires no API key
+    api_key = x_llm_key or x_anthropic_key
+    if provider != "ollama" and not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key (X-LLM-Key or X-Anthropic-Key header)")
 
     # Build system prompt with map context
     ctx = request.map_context
