@@ -1,0 +1,89 @@
+name: Bug Report
+description: Report a bug in Echelon
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix it.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Echelon is affected?
+      options:
+        - Frontend (map, sidebar, UI)
+        - Backend (API, routers, services)
+        - Convergence scoring / Z-scores
+        - Celery workers / ingestion tasks
+        - Copilot (BYOK chat)
+        - Docker / deployment
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Tell us about your setup.
+      placeholder: |
+        OS: macOS 15 / Ubuntu 24.04 / Windows 11
+        Browser: Chrome 130 / Firefox 132
+        Docker version: 27.x
+        Deployment: local docker-compose / cloud
+      value: |
+        OS:
+        Browser:
+        Docker version:
+        Deployment:
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Open the map at zoom level 7 over the Black Sea
+        2. Enable the AIS dark-vessel layer
+        3. Click on an H3 cell with Z-score > 3
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: |
+        Paste any relevant logs from the browser console, Docker container logs (`docker compose logs backend`), or Celery worker output. Attach screenshots if applicable.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help us diagnose the issue.
+    validations:
+      required: false

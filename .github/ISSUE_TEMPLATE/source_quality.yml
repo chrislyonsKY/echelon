@@ -1,0 +1,103 @@
+name: Data Source Quality Issue
+description: Report a problem with a GEOINT/OSINT data source (stale data, bad coordinates, missing coverage, API changes)
+labels: ["data-quality", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report issues with the quality, accuracy, or availability of a data source feeding into Echelon's convergence scoring.
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Affected data source
+      description: Which source is exhibiting the problem?
+      options:
+        - ACLED (conflict events)
+        - AIS / AISstream (vessel tracking)
+        - Global Fishing Watch (vessel anomalies)
+        - FIRMS / VIIRS (thermal hotspots)
+        - Sentinel-2 (EO change detection)
+        - GDELT (event mentions)
+        - NewsData.io (news articles)
+        - OSM / Overpass (infrastructure)
+        - OSINT web scraper
+        - Multiple sources
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue type
+      description: What kind of quality problem are you seeing?
+      options:
+        - Stale / outdated data (not refreshing)
+        - Missing coverage (geographic or temporal gaps)
+        - Incorrect coordinates / geometry
+        - Duplicate signals
+        - API errors or upstream outage
+        - Schema change / field mapping broken
+        - Anomalous Z-score inflation or deflation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: region
+    attributes:
+      label: Geographic region
+      description: Where is the issue occurring? Include approximate coordinates, H3 cell IDs, or a region name.
+      placeholder: |
+        e.g., Black Sea (lat 43.5, lon 34.0), H3 cell 871f24a4dffffff, or "Eastern Mediterranean"
+    validations:
+      required: true
+
+  - type: textarea
+    id: time-range
+    attributes:
+      label: Time range
+      description: When did you first notice the issue? Is it ongoing?
+      placeholder: |
+        e.g., Data stopped updating after 2026-03-25. Last valid ingest was at 14:00 UTC.
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample-signals
+    attributes:
+      label: Sample signals
+      description: |
+        Provide examples of problematic signals if available. Include signal IDs, event IDs, or screenshots of the affected H3 cells. This helps us trace the issue through the ingestion pipeline.
+      placeholder: |
+        - Signal ID: abc123 has lat/lon (0, 0) which is clearly wrong
+        - H3 cell 871f24a4dffffff shows Z-score of 12.4 but only has 1 ACLED event
+        - FIRMS hotspots from 2026-03-20 are still showing as "latest"
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should the data look like?
+    validations:
+      required: true
+
+  - type: textarea
+    id: convergence-impact
+    attributes:
+      label: Impact on convergence scoring
+      description: |
+        How is this affecting the convergence heatmap? Are Z-scores inflated/deflated? Are false positives appearing?
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links to upstream status pages, related issues, or any other relevant information.
+    validations:
+      required: false

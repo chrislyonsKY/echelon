@@ -1,0 +1,16 @@
+name: Security Vulnerability
+description: "DO NOT file security issues here. Report them privately."
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Do not file security vulnerabilities as GitHub issues.
+
+        Security issues must be reported privately via email:
+
+        **security@chrislyons.dev**
+
+        See [SECURITY.md](../SECURITY.md) for our full security policy, including supported versions, PGP key, and expected response times.
+
+        If you open a public issue for a security vulnerability, it will be closed immediately.

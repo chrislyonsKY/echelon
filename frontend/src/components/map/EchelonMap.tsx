@@ -39,7 +39,6 @@ import CyberLayers from "./CyberLayers";
 import ImageryPanel from "./ImageryPanel";
 import { getDisplayDescription, getDisplayTitle, hasTranslation, textDirectionForRecord } from "@/utils/language";
 import { countryFlagForName } from "@/utils/countries";
-import { severityFromZScore } from "@/utils/symbology";
 
 const REFRESH_MS = 15 * 60 * 1000;
 const AIRCRAFT_ICON_ID = "opensky-aircraft-icon";
@@ -647,30 +646,82 @@ export default function EchelonMap() {
 
 // ── Popup components ──────────────────────────────────────────────────────────
 
+function convergenceAssessment(z: number): { label: string; color: string; description: string } {
+  if (z >= 5) return { label: "CRITICAL", color: "#dc2626", description: "Extreme multi-source convergence — immediate review recommended" };
+  if (z >= 3) return { label: "HIGH", color: "#f97316", description: "Strong convergence across multiple independent sources" };
+  if (z >= 2) return { label: "ELEVATED", color: "#eab308", description: "Above-baseline activity from several sources" };
+  if (z >= 1) return { label: "MODERATE", color: "#2563eb", description: "Slightly above historical baseline" };
+  return { label: "BASELINE", color: "#64748b", description: "Activity within normal range for this cell" };
+}
+
 function ConvergencePopup({ data, lat, lng }: { data: Record<string, unknown>; lat: number; lng: number }) {
   const z = Number(data.zScore) || 0;
-  const raw = Number(data.rawScore) || 0;
   const low = Boolean(data.lowConfidence);
+  const assessment = convergenceAssessment(z);
 
   return (
-    <div style={{ fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, minWidth: 200 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: z > 2 ? "#ef4444" : z > 1 ? "#f59e0b" : "#f1f5f9" }}>
-        Convergence Cell
+    <div style={{ fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, minWidth: 240 }}>
+      {/* Severity header with colored bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, marginBottom: 6,
+        paddingBottom: 6, borderBottom: `2px solid ${assessment.color}`,
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+          color: assessment.color, fontFamily: "var(--font-mono)",
+        }}>
+          {assessment.label}
+        </span>
+        <span style={{ fontSize: 18, fontWeight: 700, color: "#f1f5f9", fontFamily: "var(--font-mono)" }}>
+          {z.toFixed(2)}
+        </span>
+        <span style={{ fontSize: 10, color: "#94a3b8" }}>Z-score</span>
       </div>
-      <PopupRow label="Z-Score" value={z.toFixed(3)} highlight={z > 1.5} />
-      <PopupRow label="Raw Score" value={raw.toFixed(5)} />
-      <PopupRow label="H3 Index" value={String(data.h3Index)} mono />
-      <PopupRow label="Coordinates" value={`${lat.toFixed(5)}, ${lng.toFixed(5)}`} mono />
+
+      {/* Plain-language description */}
+      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, lineHeight: 1.5 }}>
+        {assessment.description}
+      </div>
+
+      {/* Key facts */}
+      <PopupRow label="Location" value={`${lat.toFixed(4)}, ${lng.toFixed(4)}`} mono />
+      <PopupRow label="H3 Cell" value={String(data.h3Index).slice(0, 12) + "..."} mono />
+
       {low && (
-        <div style={{ marginTop: 4, fontSize: 10, color: "#f59e0b", fontStyle: "italic" }}>
+        <div style={{
+          marginTop: 6, fontSize: 10, color: "#eab308",
+          padding: "4px 8px", background: "rgba(234,179,8,0.1)",
+          borderRadius: 4, border: "1px solid rgba(234,179,8,0.2)",
+        }}>
           Low confidence — fewer than 30 baseline observations
         </div>
       )}
-      <div style={{ marginTop: 6, fontSize: 9, color: "#64748b" }}>
-        Click to investigate all signals in this cell
+
+      {/* Action button */}
+      <div style={{
+        marginTop: 8, padding: "6px 0", textAlign: "center",
+        fontSize: 11, fontWeight: 600, color: "#3b82f6",
+        borderTop: "1px solid rgba(148,163,184,0.15)",
+        cursor: "pointer",
+      }}>
+        Investigate signals in this cell &rarr;
       </div>
     </div>
   );
+}
+
+function relativeTime(isoString: string): string {
+  try {
+    const ms = Date.now() - new Date(isoString).getTime();
+    if (ms < 0) return "just now";
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch { return isoString; }
 }
 
 function SignalPopup({ data, lat, lng }: { data: Record<string, unknown>; lat: number; lng: number }) {
@@ -678,78 +729,94 @@ function SignalPopup({ data, lat, lng }: { data: Record<string, unknown>; lat: n
   const signalType = String(data.signalType || "");
   const title = String(data.title || signalType.replace(/_/g, " "));
   const titleDirection = String(data.textDirection || "ltr") === "rtl" ? "rtl" : "ltr";
-  const zScore = Number(data.zScore);
-  const severity = severityFromZScore(Number.isFinite(zScore) ? zScore : null);
   const occurredAt = String(data.occurredAt || "");
   const provenance = String(data.provenance || "");
   const detail1 = String(data.detail1 || "");
   const detail2 = String(data.detail2 || "");
   const url = String(data.url || "");
 
-  const srcMeta = SOURCE_COLORS[source] || { color: "#94a3b8", label: source };
+  const srcMeta = SOURCE_COLORS[source] || { color: "#94a3b8", label: source, weight: 0.1 };
 
   return (
-    <div style={{ fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, minWidth: 220 }}>
-      {/* Source badge + title */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-        <span style={{
-          width: 8, height: 8, borderRadius: "50%", background: srcMeta.color, flexShrink: 0,
-        }} />
-        <span dir={titleDirection} style={{ fontWeight: 700, fontSize: 13, color: "#f1f5f9", flex: 1 }}>
-          {title.length > 60 ? title.slice(0, 57) + "..." : title}
-        </span>
-        <span
-          style={{
-            border: `1px solid ${severity.color}`,
-            color: severity.color,
-            borderRadius: 999,
-            padding: "1px 6px",
-            fontSize: 9,
-            fontWeight: 700,
-            fontFamily: "var(--font-mono)",
-            letterSpacing: "0.06em",
-          }}
-        >
-          {severity.label}
+    <div style={{ fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, minWidth: 250 }}>
+      {/* Source tag — colored bar top */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 6, paddingBottom: 5,
+        borderBottom: `2px solid ${srcMeta.color}`,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: srcMeta.color, flexShrink: 0,
+            border: "1.5px solid rgba(255,255,255,0.3)",
+          }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: srcMeta.color, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            {srcMeta.label}
+          </span>
+        </div>
+        {occurredAt && (
+          <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
+            {relativeTime(occurredAt)}
+          </span>
+        )}
+      </div>
+
+      {/* Title */}
+      <div dir={titleDirection} style={{ fontWeight: 600, fontSize: 13, color: "#f1f5f9", marginBottom: 4, lineHeight: 1.4 }}>
+        {title.length > 80 ? title.slice(0, 77) + "..." : title}
+      </div>
+
+      {/* Signal type */}
+      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
+        {signalType.replace(/_/g, " ")}
+      </div>
+
+      {/* Details */}
+      {detail1 && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{detail1}</div>}
+      {detail2 && <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{detail2}</div>}
+
+      {/* Metadata row */}
+      <div style={{
+        display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+        marginTop: 4, marginBottom: 4,
+      }}>
+        {provenance && (
+          <span style={{
+            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+            background: provenance.includes("wire") ? "rgba(16,185,129,0.15)" : "rgba(148,163,184,0.12)",
+            color: provenance.includes("wire") ? "#10b981" : "#94a3b8",
+            textTransform: "uppercase", letterSpacing: "0.04em",
+          }}>
+            {provenance.replace(/_/g, " ")}
+          </span>
+        )}
+        <span style={{ fontSize: 10, color: "#64748b", fontFamily: "var(--font-mono)" }}>
+          {lat.toFixed(4)}, {lng.toFixed(4)}
         </span>
       </div>
 
-      <PopupRow label="Source" value={srcMeta.label} />
-      <PopupRow label="Type" value={signalType.replace(/_/g, " ")} />
       {occurredAt && (
-        <PopupRow
-          label="Time"
-          value={(() => { try { return format(new Date(occurredAt), "MMM d, yyyy HH:mm"); } catch { return occurredAt; } })()}
-        />
-      )}
-      <PopupRow label="Coordinates" value={`${lat.toFixed(5)}, ${lng.toFixed(5)}`} mono />
-
-      {provenance && (
-        <div style={{ marginTop: 4 }}>
-          <span style={{
-            fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3,
-            background: provenance.includes("wire") ? "rgba(16,185,129,0.2)" : "rgba(148,163,184,0.2)",
-            color: provenance.includes("wire") ? "#10b981" : "#94a3b8",
-          }}>
-            {provenance.replace(/_/g, " ").toUpperCase()}
-          </span>
+        <div style={{ fontSize: 10, color: "#64748b" }}>
+          {(() => { try { return format(new Date(occurredAt), "MMM d, yyyy HH:mm") + " UTC"; } catch { return occurredAt; } })()}
         </div>
       )}
 
-      {detail1 && <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>{detail1}</div>}
-      {detail2 && <div style={{ fontSize: 11, color: "#64748b" }}>{detail2}</div>}
-
-      {url && (
-        <a href={url} target="_blank" rel="noopener noreferrer" style={{
-          display: "inline-block", marginTop: 6, fontSize: 10,
-          color: "#3b82f6", textDecoration: "none",
-        }}>
-          Open source &rarr;
-        </a>
-      )}
-
-      <div style={{ marginTop: 6, fontSize: 9, color: "#64748b" }}>
-        Click to view full event detail
+      {/* Actions */}
+      <div style={{
+        display: "flex", gap: 12, marginTop: 8, paddingTop: 6,
+        borderTop: "1px solid rgba(148,163,184,0.15)",
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#3b82f6", cursor: "pointer" }}>
+          View detail &rarr;
+        </span>
+        {url && (
+          <a href={url} target="_blank" rel="noopener noreferrer" style={{
+            fontSize: 11, fontWeight: 600, color: "#64748b", textDecoration: "none",
+          }}>
+            Source &nearr;
+          </a>
+        )}
       </div>
     </div>
   );
