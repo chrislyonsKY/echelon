@@ -17,7 +17,7 @@ All services share Railway's internal private network.
 
 ### Service: beat
 - Build: `./backend/Dockerfile`
-- Start command: `celery -A app.workers.celery_app beat --loglevel=info`
+- Start command: `celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule`
 
 ### Service: flower
 - Build: `./backend/Dockerfile`
@@ -44,12 +44,7 @@ All services share Railway's internal private network.
    railway run python -m alembic upgrade head
    ```
 5. Deploy worker, beat, flower
-6. Run historical data bootstrap:
-   ```
-   railway run python -m app.workers.tasks.maintenance bootstrap_baseline
-   ```
-   (This takes 15–30 minutes)
-7. Deploy frontend to Render as static site (build command: `npm run build`, publish: `dist/`)
+6. Deploy frontend to Render as static site (build command: `npm run build`, publish: `dist/`)
 
 ## Environment Variables (Railway)
 

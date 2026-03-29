@@ -10,6 +10,7 @@ import logging
 import math
 from datetime import UTC, datetime, timedelta
 
+import redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -25,6 +26,7 @@ from app.services.convergence_scorer import (
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+REDIS_LAST_RUN_KEY = "echelon:ingest:convergence:last_run"
 
 # H3 column name per resolution
 _H3_COL = {5: "h3_index_5", 7: "h3_index_7", 9: "h3_index_9"}
@@ -107,6 +109,7 @@ async def _recompute() -> dict:
         await engine.dispose()
 
     logger.info("Convergence recomputation complete: %s", results)
+    _set_redis_last_run(datetime.now(UTC).isoformat())
     return results
 
 
@@ -226,3 +229,12 @@ async def _recompute_resolution(
         await session.commit()
 
     return len(score_rows)
+
+
+def _set_redis_last_run(value: str) -> None:
+    """Record successful task execution for source-health telemetry."""
+    client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        client.set(REDIS_LAST_RUN_KEY, value)
+    finally:
+        client.close()

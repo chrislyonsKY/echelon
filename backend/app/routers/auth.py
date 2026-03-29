@@ -43,6 +43,7 @@ async def login() -> RedirectResponse:
 @router.get("/callback")
 async def callback(
     code: str,
+    request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
@@ -117,7 +118,7 @@ async def callback(
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=True,
+        secure=_should_use_secure_cookie(request),
     )
     return redirect
 
@@ -181,6 +182,12 @@ def get_current_user_id(request: Request) -> str | None:
     Use require_auth() for write endpoints.
     """
     return _get_user_id_from_cookie(request)
+
+
+def _should_use_secure_cookie(request: Request) -> bool:
+    """Keep secure cookies in production while allowing local HTTP auth."""
+    host = (request.url.hostname or "").lower()
+    return host not in {"localhost", "127.0.0.1", "::1"}
 
 
 def require_auth(request: Request) -> str:

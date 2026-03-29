@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 REDIS_LAST_EXPORT_KEY = "echelon:ingest:gdelt:last_export"
 REDIS_LAST_GKG_KEY = "echelon:ingest:gdelt:last_gkg"
+REDIS_LAST_RUN_KEY = "echelon:ingest:gdelt:last_run"
 
 _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
@@ -110,6 +111,7 @@ async def _ingest() -> dict:
         export_result["inserted"], export_result["skipped"],
         gkg_result["inserted"], gkg_result["skipped"],
     )
+    _set_redis_key(REDIS_LAST_RUN_KEY, datetime.now(timezone.utc).isoformat())
     return {
         "export": export_result,
         "gkg": gkg_result,

@@ -8,7 +8,7 @@
 
 ## Purpose
 
-Echelon is an open-source GEOINT conflict and maritime activity monitoring dashboard. It fuses five independent open-data signal streams into a convergence heatmap, enabling OSINT researchers, journalists, policy analysts, and the public to identify locations where multiple signals simultaneously exceed historical baselines.
+Echelon is an open-source GEOINT conflict and maritime activity monitoring dashboard. It fuses multiple independent open-data signal streams into a convergence heatmap, enabling OSINT researchers, journalists, policy analysts, and the public to identify locations where multiple signals simultaneously exceed historical baselines.
 
 ---
 
@@ -26,13 +26,13 @@ Echelon is an open-source GEOINT conflict and maritime activity monitoring dashb
 ### F-02: Investigation Sidebar (Secondary Mode)
 - **MUST** open on click of any H3 cell
 - **MUST** contain three tabs: Layer Panel, Event Timeline, Signal Cards
-- **Layer Panel:** Toggle individual signal feeds (ACLED, GFW, Sentinel-2, OSM, News) on/off as map overlays
+- **Layer Panel:** Toggle individual signal feeds (GDELT, GFW, Sentinel-2, OSM, News) on/off as map overlays
 - **Event Timeline:** Chronological list of all signals in the selected cell, filterable by date range and signal type
 - **Signal Cards:** Evidence cards per event with source attribution, timestamp, description, and link to original source
 - **MUST** close when clicking outside the cell or pressing Escape
 
 ### F-03: Signal Layers
-- **ACLED:** Point layer, symbolized by event type (battle, explosion, protest, riot). Clickable points open Signal Cards.
+- **GDELT Events:** Point layer, symbolized by signal type and recency. Clickable points open Signal Cards.
 - **GFW Vessels:** H3 hexbin density at res 7; individual vessel tracks at zoom > 9. AIS gap events highlighted in red.
 - **Sentinel-2:** Sidebar scene browser (thumbnail grid filtered by current viewport); load scene as styled COG overlay on click. NBR anomaly cells highlighted on map.
 - **OSM Infrastructure:** Toggleable overlay for `military=*`, `aeroway=*`, `man_made=petroleum_well`, pipeline features.
@@ -41,21 +41,21 @@ Echelon is an open-source GEOINT conflict and maritime activity monitoring dashb
 
 ### F-04: Timeline Scrubber
 - **MUST** provide a date range control (start/end date pickers + preset buttons: 24h, 7d, 30d, 90d)
-- **MUST** apply date range to ACLED, GFW, and News layers simultaneously
+- **MUST** apply date range to GDELT, GFW, and News layers simultaneously
 - **MUST** NOT affect OSM or LandScan layers (these are near-static)
 
 ### F-05: BYOK Copilot
-- **MUST** allow user to enter their Anthropic API key in a settings panel
-- **MUST** offer two key storage modes with clear UI explanation: browser localStorage only, or server-side AES-256 encrypted (authenticated users only)
-- **MUST** support the full 6-tool agent manifest (query_acled, query_stac, query_overpass, query_vessels, get_convergence_score, get_news)
+- **MUST** allow user to enter a BYOK provider key in a settings panel
+- **MUST** support Anthropic, OpenAI, Google, and Ollama providers
+- **MUST** support the current runtime tool manifest (`get_convergence_scores`, `get_signals_for_cell`, `search_signals_by_area`, `get_vessel_events`, `get_news`, `get_signal_summary`, `find_nearby_infrastructure`)
 - **MUST** implement map control protocol: copilot responses may include `map_action` objects that pan/zoom/highlight the map
-- **MUST** display tool call activity in the chat UI (collapsible "Using tool: query_acled...")
+- **MUST** display tool call activity in the chat UI
 - **MUST** never log the user's API key server-side
 - **SHOULD** persist conversation history in browser sessionStorage (cleared on tab close)
 
 ### F-06: Alert System
 - **MUST** allow authenticated users to draw or import AOI polygons
-- **MUST** support four alert trigger types: Z-score threshold (default 2.0σ), new ACLED event type in AOI, GFW AIS gap within AOI, news spike above rolling average
+- **MUST** support alerting on Z-score threshold spikes within saved AOIs
 - **MUST** display in-app notifications via a notification bell (polled every 60s)
 - **MUST** support email opt-in per AOI via Resend
 - **SHOULD** allow per-AOI custom Z-score thresholds
@@ -65,7 +65,7 @@ Echelon is an open-source GEOINT conflict and maritime activity monitoring dashb
 - **MUST** support fully anonymous read access (no friction for journalists/researchers)
 - **MUST** support GitHub OAuth login
 - **MUST** use HttpOnly session cookies — never expose session tokens to JavaScript
-- Authenticated features: saved AOIs, alert subscriptions, server-side BYOK storage
+- Authenticated features: saved AOIs and alert subscriptions
 
 ### F-08: Advanced Weight Controls
 - **MUST** provide a collapsible advanced panel with signal weight sliders
@@ -93,15 +93,14 @@ Echelon is an open-source GEOINT conflict and maritime activity monitoring dashb
 - SQL parameters always use bound parameters — no string interpolation
 
 ### Data Attribution
-- All Signal Cards must display source attribution (ACLED, GFW, NewsData, etc.)
+- All Signal Cards must display source attribution (GDELT, GFW, NewsData, etc.)
 - Map UI must display a data sources panel with links and license notices
-- ACLED requires explicit attribution per their EULA
 
 ---
 
 ## Out of Scope (v1.0)
 
-- Real-time AIS positional feed (GFW event-based data only in v1)
+- Server-side storage of BYOK provider keys
 - Satellite AIS (requires commercial provider)
 - User-to-user collaboration or shared workspaces
 - Mobile-native app

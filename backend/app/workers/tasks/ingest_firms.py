@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import h3
 import orjson
+import redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -23,6 +24,7 @@ from app.services.firms import CONFLICT_ZONES, FIRMSService
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+REDIS_LAST_RUN_KEY = "echelon:ingest:firms:last_run"
 
 _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
@@ -91,6 +93,7 @@ async def _ingest() -> dict:
 
         if not all_anomalies:
             logger.info("FIRMS: no anomalies found across all zones")
+            _set_redis_last_run(datetime.now(timezone.utc).isoformat())
             return {"inserted": 0, "skipped": 0, "total": 0}
 
         result = await _insert_anomalies(all_anomalies, service)
@@ -102,6 +105,7 @@ async def _ingest() -> dict:
         "FIRMS ingestion complete — %d inserted / %d skipped / %d total",
         result["inserted"], result["skipped"], result["total"],
     )
+    _set_redis_last_run(datetime.now(timezone.utc).isoformat())
     return result
 
 
@@ -194,3 +198,12 @@ async def _bulk_insert(rows: list[dict]) -> dict:
         await engine.dispose()
 
     return {"inserted": inserted, "skipped": skipped, "total": len(rows)}
+
+
+def _set_redis_last_run(value: str) -> None:
+    """Record successful task execution for source-health telemetry."""
+    client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        client.set(REDIS_LAST_RUN_KEY, value)
+    finally:
+        client.close()

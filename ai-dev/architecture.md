@@ -8,7 +8,7 @@
 
 ## System Overview
 
-Echelon is a multi-source GEOINT convergence dashboard. The core insight is that a single signal (one ACLED event, one AIS gap) is low-confidence noise. Multiple independent signals elevated simultaneously in the same location is analytically meaningful — a convergence. Echelon automates this fusion.
+Echelon is a multi-source GEOINT convergence dashboard. The core insight is that a single signal (one GDELT conflict event, one AIS gap) is low-confidence noise. Multiple independent signals elevated simultaneously in the same location is analytically meaningful — a convergence. Echelon automates this fusion.
 
 ```
 Open Data Sources
@@ -66,8 +66,8 @@ Nginx routes:
 **`signals`** — All ingested events from all sources, unified schema
 ```sql
 id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
-source          TEXT NOT NULL  -- 'acled' | 'gfw' | 'sentinel2' | 'osm' | 'gdelt' | 'newsdata'
-signal_type     TEXT NOT NULL  -- e.g. 'battle', 'ais_gap', 'nbr_anomaly', 'military_construction'
+source          TEXT NOT NULL  -- 'gfw' | 'sentinel2' | 'osm' | 'gdelt' | 'newsdata' | ...
+signal_type     TEXT NOT NULL  -- e.g. 'gdelt_conflict', 'gfw_ais_gap', 'sentinel2_nbr_anomaly'
 h3_index_5      TEXT NOT NULL  -- H3 cell at resolution 5
 h3_index_7      TEXT NOT NULL  -- H3 cell at resolution 7
 h3_index_9      TEXT NOT NULL  -- H3 cell at resolution 9
@@ -149,15 +149,18 @@ read_at         TIMESTAMPTZ
 
 ```python
 SIGNAL_WEIGHTS = {
-    "gfw_ais_gap":              0.35,  # AIS disabling event — highest specificity
-    "acled_battle":             0.30,  # ACLED battle/explosion — human-coded ground truth
-    "acled_explosion":          0.30,
-    "sentinel2_nbr_anomaly":    0.25,  # EO change — objective sensor data
-    "acled_other":              0.15,  # ACLED other event types
-    "gdelt_conflict":           0.12,  # GDELT conflict-coded article
-    "newsdata_article":         0.12,
-    "gfw_loitering":            0.10,  # Vessel loitering near infrastructure
-    "osm_change":               0.08,  # OSM infrastructure change
+    "gfw_ais_gap":           0.35,
+    "gdelt_conflict":        0.30,
+    "sentinel2_nbr_anomaly": 0.25,
+    "firms_thermal":         0.22,
+    "opensky_military":      0.20,
+    "gdelt_gkg_threat":      0.15,
+    "newsdata_article":      0.12,
+    "osint_scrape":          0.12,
+    "gfw_loitering":         0.10,
+    "ais_position":          0.08,
+    "osm_change":            0.08,
+    "natural_hazard":       -0.15,
 }
 ```
 
@@ -191,14 +194,18 @@ Convergence scores are pre-computed and cached at all three resolutions. The fro
 
 | Task | Frequency | Source | Notes |
 |------|-----------|--------|-------|
-| `ingest_acled` | Every 6 hours | ACLED API | Rate-limited; fetches new events since last run |
 | `ingest_gfw_events` | Every 12 hours | GFW Events API | AIS gaps, loitering, port avoidance |
-| `ingest_gdelt` | Every 1 hour | GDELT bulk files | Conflict-coded events only (CAMEO 19x, 20x) |
+| `ingest_gdelt` | Every 15 minutes | GDELT bulk files | Conflict-coded events plus GKG threat stream |
 | `ingest_newsdata` | Every 4 hours | NewsData.io API | Conflict keywords, stored for UI sidebar |
 | `ingest_osm_changes` | Every 24 hours | Overpass API | Military/infrastructure tag changes |
+| `ingest_opensky` | Every 30 minutes | OpenSky Network | Military ADS-B / transponder observations |
+| `ingest_osint_scrape` | Every 2 hours | RSS / HTML / social / structured feeds | Open-source context and reporting |
+| `ingest_aisstream` | Every 30 minutes | AISStream | Real-time AIS positions in conflict-zone waters |
+| `ingest_firms` | Every 6 hours | NASA FIRMS | Thermal anomalies and active fires |
 | `trigger_sentinel2_jobs` | Every 24 hours | Element84 STAC | Queues scene-fetch tasks per active AOI |
 | `process_sentinel2_scene` | On demand (queued) | Element84 COG | NBR delta computation, heavy CPU |
 | `recompute_convergence` | Every 15 minutes | PostGIS | Refreshes h3_convergence_scores at all resolutions |
+| `cluster_events` | Every 15 minutes | PostGIS | Groups recent signals into analyst-facing events |
 | `check_aoi_alerts` | Every 15 minutes | PostGIS | Compares scores against AOI thresholds, fires alerts |
 | `trim_old_signals` | Every 24 hours | PostGIS | Deletes signals older than 365 days (baseline window) |
 
@@ -206,94 +213,21 @@ Convergence scores are pre-computed and cached at all three resolutions. The fro
 
 ## BYOK Copilot Architecture
 
-The copilot is a full Claude agent with 6 tool functions. All tool calls that hit live APIs are proxied through the FastAPI `/api/copilot/chat` endpoint.
+The copilot is a multi-provider BYOK proxy with a database-backed tool manifest. The frontend supports Anthropic, OpenAI, Google, and Ollama, while tool calls are brokered through the FastAPI `/api/copilot/chat` endpoint.
 
 ### Tool Manifest
 
-```python
-COPILOT_TOOLS = [
-    {
-        "name": "query_acled",
-        "description": "Query live ACLED conflict event data for a bounding box and date range.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-                "date_from": {"type": "string", "format": "date"},
-                "date_to": {"type": "string", "format": "date"},
-                "event_types": {"type": "array", "items": {"type": "string"}}
-            },
-            "required": ["bbox", "date_from", "date_to"]
-        }
-    },
-    {
-        "name": "query_stac",
-        "description": "Search for Sentinel-2 scenes via Element84 Earth Search STAC.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-                "date_from": {"type": "string", "format": "date"},
-                "date_to": {"type": "string", "format": "date"},
-                "cloud_cover_max": {"type": "number", "minimum": 0, "maximum": 100}
-            },
-            "required": ["bbox", "date_from", "date_to"]
-        }
-    },
-    {
-        "name": "query_overpass",
-        "description": "Query OpenStreetMap Overpass API for infrastructure features in a bounding box.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "OSM tag filters e.g. ['military', 'aeroway=aerodrome']"}
-            },
-            "required": ["bbox", "tags"]
-        }
-    },
-    {
-        "name": "query_vessels",
-        "description": "Query GlobalFishingWatch for vessel events and anomalies in a bounding box.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-                "date_from": {"type": "string", "format": "date"},
-                "date_to": {"type": "string", "format": "date"},
-                "event_types": {"type": "array", "items": {"type": "string"}, "description": "GFW event types: ais_gap, loitering, port_visit, encounter"}
-            },
-            "required": ["bbox", "date_from", "date_to"]
-        }
-    },
-    {
-        "name": "get_convergence_score",
-        "description": "Retrieve the pre-computed convergence Z-score for a bounding box from the PostGIS cache.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-                "resolution": {"type": "integer", "enum": [5, 7, 9]}
-            },
-            "required": ["bbox"]
-        }
-    },
-    {
-        "name": "get_news",
-        "description": "Search for news articles relevant to a geographic area and keywords.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
-                "keywords": {"type": "array", "items": {"type": "string"}},
-                "date_from": {"type": "string", "format": "date"},
-                "date_to": {"type": "string", "format": "date"}
-            },
-            "required": ["bbox"]
-        }
-    }
-]
-```
+Current runtime tool set:
+
+- `get_convergence_scores`
+- `get_signals_for_cell`
+- `search_signals_by_area`
+- `get_vessel_events`
+- `get_news`
+- `get_signal_summary`
+- `find_nearby_infrastructure`
+
+The authoritative tool manifest lives in `backend/app/routers/copilot.py`.
 
 ### Map Control Protocol
 
@@ -307,7 +241,10 @@ When the copilot determines that the map should respond to a query (e.g., "show 
     "center": [36.6, 45.3],
     "zoom": 8,
     "highlight_cells": ["851f91bfffffff", "851f91c7fffffff"],
-    "active_layers": ["gfw_events", "acled"]
+    "active_layers": {
+      "gfwVessels": true,
+      "gdeltEvents": true
+    }
   }
 }
 ```
@@ -352,7 +289,7 @@ Anonymous users: all read endpoints work without cookie. Write endpoints (save A
 4. Worker downloads B08 (NIR) and B11 (SWIR) bands as COG windows
 5. Computes NBR = (NIR - SWIR) / (NIR + SWIR) for both scenes
 6. Delta NBR > 0.1 threshold → creates `sentinel2_nbr_anomaly` signal record
-7. NDVI delta (B08, B04) computed as secondary signal for vegetation destruction
+7. Inserts `sentinel2_nbr_anomaly` signals for anomalous AOI centroids
 
 All raster work uses `rasterio` with windowed reading — never loads full scenes into memory.
 

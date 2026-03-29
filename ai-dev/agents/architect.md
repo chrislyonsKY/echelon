@@ -22,11 +22,11 @@ Systems architect responsible for module interfaces, data flow design, PostGIS s
 ```python
 # Celery tasks are synchronous. Use asyncio.run() for async service calls.
 @celery_app.task(bind=True)
-def ingest_acled(self):
+def ingest_gdelt(self):
     async def _run():
         async with AsyncSessionLocal() as session:
-            service = ACLEDService()
-            events = await service.fetch_events(...)
+            service = GDELTService()
+            events = await service.fetch_latest_conflict_events(...)
             # ... upsert
     asyncio.run(_run())
 ```

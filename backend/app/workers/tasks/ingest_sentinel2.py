@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import h3
 import orjson
+import redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -25,6 +26,7 @@ from app.services.stac import STACService
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+REDIS_LAST_RUN_KEY = "echelon:ingest:sentinel2:last_run"
 
 _INSERT_SIGNAL_SQL = text("""
     INSERT INTO signals (
@@ -90,6 +92,7 @@ async def _trigger_jobs() -> dict:
 
         if not aois:
             logger.info("Sentinel-2: no AOIs to process")
+            _set_redis_last_run(datetime.now(timezone.utc).isoformat())
             return {"aois_checked": 0, "tasks_queued": 0}
 
         today = date.today()
@@ -134,6 +137,7 @@ async def _trigger_jobs() -> dict:
     finally:
         await engine.dispose()
 
+    _set_redis_last_run(datetime.now(timezone.utc).isoformat())
     return {"aois_checked": aois_checked, "tasks_queued": tasks_queued}
 
 
@@ -275,3 +279,12 @@ async def _create_anomaly_signals(
         await engine.dispose()
 
     return inserted
+
+
+def _set_redis_last_run(value: str) -> None:
+    """Record successful task execution for source-health telemetry."""
+    client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        client.set(REDIS_LAST_RUN_KEY, value)
+    finally:
+        client.close()

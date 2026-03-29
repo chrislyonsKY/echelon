@@ -115,17 +115,15 @@ Open `http://localhost` in your browser.
 
 ## Deployment
 
-### Infrastructure
+Two deployment paths are supported:
 
-| Component | Provider | Purpose |
-|-----------|----------|---------|
-| **Backend** | [DigitalOcean](https://digitalocean.com) Droplet (4GB+) | Docker Compose stack |
-| **CDN / SSL** | [Cloudflare](https://cloudflare.com) | DNS, SSL, DDoS protection, edge caching |
+- Managed deployment: Railway for the backend stack plus Render for the static frontend. See [DEPLOY.md](DEPLOY.md).
+- Self-hosted deployment: Docker Compose on a VPS such as DigitalOcean, Hetzner, or similar.
 
-### Production Deploy
+### Self-Hosted Production Deploy
 
 ```bash
-# On the Droplet:
+# On the VPS:
 apt update && apt install -y docker.io docker-compose-v2 git
 git clone https://github.com/chrislyonsKY/echelon.git
 cd echelon
@@ -134,9 +132,7 @@ docker compose up -d --build
 docker compose exec api alembic upgrade head
 ```
 
-**Cloudflare DNS:** A record → Droplet IP (proxied). SSL mode: Flexible.
-
-**GitHub OAuth callback:** `https://echelon-geoint.org/api/auth/callback`
+If you front the stack with Cloudflare or another CDN, use HTTPS end to end and set the GitHub OAuth callback to your public `/api/auth/callback` URL.
 
 ### Updating
 
@@ -148,18 +144,15 @@ docker compose up -d --build --force-recreate
 ## Architecture
 
 ```
-Cloudflare (CDN + SSL)
+User Browser
   │
-DigitalOcean Droplet
-  │
-  Nginx (reverse proxy)
-  ├── Frontend (Vite / React / MapLibre GL JS / Deck.gl)
-  ├── FastAPI (REST API + copilot proxy)
-  │   ├── PostgreSQL + PostGIS (signals, H3 cells, users, AOIs)
-  │   ├── Redis (Celery broker + cache)
-  │   ├── Celery Worker (ingestion, EO processing)
-  │   ├── Celery Beat (scheduled jobs)
-  │   └── Flower (task monitoring)
+  ├── Static frontend (Vite / React / MapLibre GL JS / Deck.gl)
+  └── FastAPI (REST API + copilot proxy)
+      ├── PostgreSQL + PostGIS (signals, H3 cells, users, AOIs)
+      ├── Redis (Celery broker + cache)
+      ├── Celery Worker (ingestion, EO processing)
+      ├── Celery Beat (scheduled jobs)
+      └── Flower (task monitoring)
 ```
 
 ## Convergence Scoring
@@ -176,7 +169,7 @@ z_score(cell)   = (raw_score - μ) / max(σ, 0.001)
 
 ## Security
 
-- BYOK API keys: never logged, never persisted server-side, held in memory for request duration only
+- BYOK API keys: sent per request only, never logged, and not persisted by the current UI flow
 - Session cookies: HttpOnly, SameSite=Lax, Secure
 - Copilot guardrails: input pattern blocklist, injection detection, GEOINT-only system prompt
 - All SQL parameterized — no string interpolation

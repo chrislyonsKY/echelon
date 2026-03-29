@@ -100,6 +100,54 @@ export interface SignalEvent {
   displayDescription?: string | null;
 }
 
+export interface TrackFeatureCollection extends GeoJSON.FeatureCollection<GeoJSON.LineString> {}
+
+export interface ImageryScene {
+  id: string;
+  provider: "capella" | "maxar";
+  title: string;
+  capturedAt: string | null;
+  bbox: [number, number, number, number] | null;
+  geometry: GeoJSON.Geometry | null;
+  thumbnailUrl?: string | null;
+  previewUrl?: string | null;
+  assetUrl?: string | null;
+  itemUrl: string;
+  license: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ImageryAnalysis {
+  provider: "capella" | "maxar";
+  sceneId: string;
+  itemUrl: string;
+  processor: string;
+  analysisType: string;
+  sarkitAvailable: boolean;
+  metadata: Record<string, unknown>;
+  summary: {
+    window: {
+      width: number;
+      height: number;
+      bandCount: number;
+    };
+    bands: Array<{
+      pixelCount: number;
+      min: number | null;
+      max: number | null;
+      mean: number | null;
+      std: number | null;
+      p50: number | null;
+      p95: number | null;
+    }>;
+    assetHref: string;
+    sar?: {
+      strongScatterFraction: number;
+      edgeFraction: number;
+    };
+  };
+}
+
 export interface AOI {
   id: string;
   name: string;
@@ -172,6 +220,36 @@ export const signalsApi = {
     apiClient.get<SignalEvent[]>(
       `/signals?bbox=${bbox.join(",")}&source=${source}&date_from=${dateFrom}&date_to=${dateTo}`
     ),
+
+  getTracks: (
+    bbox: [number, number, number, number],
+    source: "aisstream" | "opensky",
+    hours = 24
+  ) =>
+    apiClient.get<TrackFeatureCollection>(
+      `/signals/tracks?bbox=${bbox.join(",")}&source=${source}&hours=${hours}`
+    ),
+};
+
+// ── Imagery API ───────────────────────────────────────────────────────────────
+
+export const imageryApi = {
+  search: (params: {
+    provider: "capella" | "maxar";
+    bbox: [number, number, number, number];
+    dateFrom: string;
+    dateTo: string;
+    limit?: number;
+  }) =>
+    apiClient.get<ImageryScene[]>(
+      `/imagery/search?provider=${params.provider}&bbox=${params.bbox.join(",")}&date_from=${params.dateFrom}&date_to=${params.dateTo}&limit=${params.limit ?? 12}`
+    ),
+
+  analyze: (body: {
+    itemUrl: string;
+    bbox?: [number, number, number, number];
+  }) =>
+    apiClient.post<ImageryAnalysis>("/imagery/analyze", body),
 };
 
 // ── Copilot API ───────────────────────────────────────────────────────────────
