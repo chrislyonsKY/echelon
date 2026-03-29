@@ -188,6 +188,55 @@ async def get_event_detail(
     }
 
 
+@router.patch("/{event_id}")
+async def patch_event(
+    event_id: str,
+    body: dict,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Update event fields — supports debunk workflow and trust stage changes.
+
+    Allowed fields: debunk_status, debunk_reason, trust_stage, confirmation_status, summary.
+    """
+    allowed = {"debunk_status", "debunk_reason", "trust_stage", "confirmation_status", "summary"}
+    updates = {k: v for k, v in body.items() if k in allowed and v is not None}
+
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+
+    # Verify event exists
+    check = await session.execute(text("SELECT id FROM events WHERE id = :id"), {"id": event_id})
+    if not check.fetchone():
+        raise HTTPException(404, f"Event {event_id} not found")
+
+    set_clauses = ", ".join(f"{col} = :{col}" for col in updates)
+    updates["id"] = event_id
+    updates["now"] = "now"
+
+    await session.execute(
+        text(f"UPDATE events SET {set_clauses}, updated_at = NOW() WHERE id = :id"),
+        updates,
+    )
+
+    # Audit log entry
+    import uuid as _uuid
+    await session.execute(
+        text("""
+            INSERT INTO event_audit_log (id, event_id, action, actor_type, detail, created_at)
+            VALUES (:log_id, :event_id, :action, 'user', :detail, NOW())
+        """),
+        {
+            "log_id": str(_uuid.uuid4()),
+            "event_id": event_id,
+            "action": "debunk_status_changed" if "debunk_status" in updates else "updated",
+            "detail": str({k: v for k, v in updates.items() if k != "id" and k != "now"}),
+        },
+    )
+
+    await session.commit()
+    return {"status": "updated", "eventId": event_id, "fields": list(updates.keys())}
+
+
 @router.get("/for-cell/{h3_index}")
 async def get_events_for_cell(
     h3_index: str,
