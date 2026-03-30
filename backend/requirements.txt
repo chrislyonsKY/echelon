@@ -24,7 +24,7 @@ anthropic>=0.86.0
 websockets>=12.0
 
 # Configuration
-pydantic-settings==2.5.2
+pydantic-settings==2.13.1
 
 # Auth
 authlib==1.6.9
