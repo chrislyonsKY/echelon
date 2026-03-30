@@ -31,7 +31,7 @@ authlib==1.6.9
 itsdangerous==2.2.0
 
 # BYOK key encryption
-cryptography==46.0.5
+cryptography==46.0.6
 
 # Geospatial
 h3==3.7.7
