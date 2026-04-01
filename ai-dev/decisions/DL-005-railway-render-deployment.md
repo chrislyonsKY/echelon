@@ -1,27 +1,26 @@
-# DL-005: Railway (Backend) + Render (Frontend) Deployment Split
+# DL-005: Cloudflare Pages (Frontend) + DigitalOcean (Backend) Deployment
 
-**Date:** 2025-03-25
-**Status:** Accepted
+**Date:** 2025-03-25 (revised 2026-04-01)
+**Status:** Accepted (supersedes Railway + Render)
 **Author:** Chris Lyons
 
 ## Context
 
-Echelon has an 8-container Docker Compose stack. Render.com supports Docker but not multi-service Compose natively. Railway natively supports multi-service projects with private networking and usage-based pricing.
+Echelon has a 9-container Docker Compose stack. The original plan used Railway (backend) + Render (frontend), but the project moved to Cloudflare Pages + DigitalOcean for simpler ops and lower cost.
 
 ## Decision
 
-- **Backend stack** (FastAPI, Celery worker, beat, flower, PostGIS, Redis): Railway — each container as a separate Railway service within one project, sharing a private Railway network.
-- **Frontend** (Vite static build): Render static site — free tier, CDN delivery, auto-deploys from GitHub.
+- **Backend stack** (nginx, FastAPI, Celery worker, beat, flower, PostGIS, Redis, Ollama): Single DigitalOcean Droplet running Docker Compose.
+- **Frontend** (Vite static build): Cloudflare Pages — auto-deploys from GitHub on push to `main`.
 
 ## Alternatives Considered
 
-- **Single Render service** — Rejected: Render can't run multi-container Compose natively.
-- **VPS (DigitalOcean/Hetzner)** — Valid alternative: full Docker Compose control, but requires more ops work (SSL, updates, monitoring). Suitable if Railway costs grow.
-- **Full Railway** — Frontend as Railway service: unnecessary, Render static site is free and better for CDN delivery.
+- **Railway + Render** — Previously used; migrated away due to Railway pricing and operational complexity of splitting services across two platforms.
+- **Single VPS for everything** — Rejected: frontend benefits from Cloudflare's CDN and edge caching.
 
 ## Consequences
 
-- Railway usage-based pricing; estimated $20–35/month at steady state.
-- PostGIS and Redis need Railway persistent volume mounts — configure before first deploy.
-- The `frontend_dist` shared Docker volume used in local dev is replaced by Render static build in production.
-- Flower is internal only — accessible behind Nginx basic auth, not exposed to public internet on Railway.
+- DigitalOcean Droplet requires manual ops (SSH, `docker compose up`, Alembic migrations).
+- Cloudflare terminates TLS upstream; HSTS enforcement via nginx `Strict-Transport-Security` header.
+- Docker named volumes for PostGIS data and Redis AOF persistence.
+- Flower is internal only — accessible behind nginx basic auth.

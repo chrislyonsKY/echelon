@@ -36,7 +36,7 @@ This document defines the rotation schedule and step-by-step procedures for all 
 All rotations follow the same high-level pattern:
 
 1. Generate the new secret value
-2. Update the secret in the deployment environment (Railway dashboard, `.env` file, or secrets manager)
+2. Update the secret in the `.env` file on the DigitalOcean Droplet
 3. If the secret is shared between services (e.g., `POSTGRES_PASSWORD`), update it in all locations simultaneously
 4. Restart affected containers
 5. Verify service health
@@ -62,7 +62,7 @@ The database password is used by the `db`, `api`, `worker`, `beat`, and `flower`
    docker compose exec db psql -U echelon -d echelon -c "ALTER USER echelon WITH PASSWORD 'NEW_PASSWORD_HERE';"
    ```
 
-3. Update `POSTGRES_PASSWORD` in your `.env` file (or Railway dashboard).
+3. Update `POSTGRES_PASSWORD` in your `.env` file on the Droplet.
 
 4. Restart all containers that connect to the database:
    ```bash
@@ -88,7 +88,7 @@ Used by FastAPI to sign session cookies. Rotating this key invalidates all activ
    python -c "import secrets; print(secrets.token_hex(32))"
    ```
 
-2. Update `SECRET_KEY` in your `.env` file (or Railway dashboard).
+2. Update `SECRET_KEY` in your `.env` file on the Droplet.
 
 3. Restart the API container:
    ```bash
@@ -131,7 +131,7 @@ Used to encrypt user BYOK API keys stored in the `users.byok_key_enc` column. Ro
    # Update the row with new_encrypted
    ```
 
-4. Update `BYOK_ENCRYPTION_KEY` in your `.env` file (or Railway dashboard) to the new value.
+4. Update `BYOK_ENCRYPTION_KEY` in your `.env` file on the Droplet to the new value.
 
 5. Restart the API container:
    ```bash
@@ -156,7 +156,7 @@ Used for the GitHub OAuth authentication flow.
 
 3. Copy the new secret immediately (GitHub only shows it once).
 
-4. Update `GITHUB_CLIENT_SECRET` in your `.env` file (or Railway dashboard).
+4. Update `GITHUB_CLIENT_SECRET` in your `.env` file on the Droplet.
 
 5. Restart the API container:
    ```bash
@@ -185,7 +185,7 @@ All external API keys follow the same pattern. The specific provider dashboard v
    | AISStream | https://aisstream.io/account |
    | YouTube | https://console.cloud.google.com/apis/credentials |
 
-2. Update the corresponding environment variable in your `.env` file (or Railway dashboard):
+2. Update the corresponding environment variable in your `.env` file on the Droplet:
    - `GFW_API_TOKEN`
    - `NEWSDATA_API_KEY`
    - `NEWSAPI_API_KEY`
@@ -230,7 +230,7 @@ Used for HTTP basic auth on the Flower monitoring dashboard.
 
 1. Choose a new username and password.
 
-2. Update `FLOWER_USER` and `FLOWER_PASSWORD` in your `.env` file (or Railway dashboard).
+2. Update `FLOWER_USER` and `FLOWER_PASSWORD` in your `.env` file on the Droplet.
 
 3. Restart the Flower container:
    ```bash

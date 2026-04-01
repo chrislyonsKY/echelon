@@ -1,58 +1,123 @@
-# Railway Deployment Guide
+# Deployment Guide
 
-## Service Configuration
+> **Frontend:** Cloudflare Pages  
+> **Backend:** DigitalOcean Droplet (Docker Compose)
 
-Each Docker Compose service deploys as a separate Railway service within one project.
-All services share Railway's internal private network.
+---
 
-### Service: api
-- Build: `./backend/Dockerfile`
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2`
-- Health check: `GET /api/docs` → 200
-- Environment: set all vars from `.env.example` in Railway dashboard
+## Frontend — Cloudflare Pages
 
-### Service: worker
-- Build: `./backend/Dockerfile`
-- Start command: `celery -A app.workers.celery_app worker --loglevel=info --concurrency=2`
+The frontend is a static Vite/React build deployed to Cloudflare Pages.
 
-### Service: beat
-- Build: `./backend/Dockerfile`
-- Start command: `celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule`
+| Setting | Value |
+|---------|-------|
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | `frontend` |
+| Node version | 20 |
 
-### Service: flower
-- Build: `./backend/Dockerfile`
-- Start command: `celery -A app.workers.celery_app flower --port=5555 --url-prefix=flower`
-- Internal only — do not expose publicly
+Cloudflare Pages auto-deploys on push to `main`. SPA routing is handled by Cloudflare's automatic `/* → /index.html` rewrite.
 
-### Service: db
-- Image: `postgis/postgis:16-3.4-alpine`
-- Volume: Railway persistent volume → `/var/lib/postgresql/data`
-- Environment: `POSTGRES_USER=echelon`, `POSTGRES_PASSWORD=<from env>`, `POSTGRES_DB=echelon`
+Set the `VITE_API_BASE_URL` environment variable in the Cloudflare Pages dashboard to point at your DigitalOcean backend (e.g. `https://api.echelon-geoint.org`).
 
-### Service: redis
-- Image: `redis:7.2-alpine`
-- Start command: `redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes`
-- Volume: Railway persistent volume → `/data`
+---
 
-## First Deployment Checklist
+## Backend — DigitalOcean (Docker Compose)
 
-1. Create Railway project, add all 6 services
-2. Set all environment variables in Railway dashboard (from .env.example)
-3. Deploy db and redis first — wait for healthy
-4. Deploy api — run Alembic migrations:
-   ```
-   railway run python -m alembic upgrade head
-   ```
-5. Deploy worker, beat, flower
-6. Deploy frontend to Render as static site (build command: `npm run build`, publish: `dist/`)
+The entire backend stack runs as a single Docker Compose deployment on a DigitalOcean Droplet.
 
-## Environment Variables (Railway)
+### Services
 
-Set these in the Railway dashboard for each service that needs them.
-All backend services (api, worker, beat, flower) need the full set.
-db and redis only need their own credentials.
+| Service | Image / Build | Exposed Port | Health Check |
+|---------|--------------|-------------|-------------|
+| nginx | `nginx:1.27-alpine` | 80 | — |
+| api | `backend/Dockerfile` | 8000 (internal) | `/api/health/live` |
+| worker | `backend/Dockerfile` | — | — |
+| beat | `backend/Dockerfile` | — | — |
+| flower | `backend/Dockerfile` | 5555 (internal) | — |
+| db | `postgis/postgis:16-3.4-alpine` | 5432 (internal) | `pg_isready` |
+| redis | `redis:7.2-alpine` | 6379 (internal) | `redis-cli ping` |
+| ollama | `ollama/ollama:latest` | 11434 (internal) | — |
 
-See `.env.example` for the full list with descriptions.
+### First Deployment
 
-DATABASE_URL is constructed by Railway automatically if using Railway PostgreSQL.
-Override format: `postgresql+asyncpg://echelon:<password>@<internal-host>:5432/echelon`
+```bash
+# 1. SSH into your Droplet
+ssh root@<droplet-ip>
+
+# 2. Clone the repo
+git clone https://github.com/chrislyonsKY/echelon.git
+cd echelon
+
+# 3. Create .env from example and fill in all values
+cp .env.example .env
+nano .env   # set SECRET_KEY (≥32 chars), POSTGRES_PASSWORD, REDIS_PASSWORD, API keys, etc.
+
+# 4. Start the stack (db + redis come up first via depends_on healthchecks)
+docker compose up -d
+
+# 5. Run database migrations
+docker compose exec api python -m alembic upgrade head
+
+# 6. Verify
+docker compose ps
+curl -s http://localhost/api/health/ready | jq .
+```
+
+### Redeployment (after push to main)
+
+```bash
+ssh root@<droplet-ip>
+cd echelon
+git pull origin main
+docker compose build --no-cache api
+docker compose up -d
+docker compose exec api python -m alembic upgrade head
+```
+
+### Rollback
+
+```bash
+# Revert to previous image
+docker compose up -d --no-build   # uses cached images
+
+# Or revert to a specific commit
+git checkout <previous-sha>
+docker compose build api
+docker compose up -d
+docker compose exec api python -m alembic downgrade -1
+```
+
+---
+
+## Environment Variables
+
+All backend services share the same `.env` file. See `.env.example` for the full list.
+
+**Required:**
+- `SECRET_KEY` — session signing key (≥ 32 characters)
+- `POSTGRES_PASSWORD` — PostgreSQL password
+- `REDIS_PASSWORD` — Redis auth password
+- `DATABASE_URL` — `postgresql+asyncpg://echelon:<password>@db:5432/echelon`
+- `REDIS_URL` — `redis://:<password>@redis:6379/0`
+- `CELERY_BROKER_URL` — `redis://:<password>@redis:6379/1`
+
+**Optional (features disabled if unset):**
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — GitHub OAuth
+- `GFW_API_TOKEN` — Global Fishing Watch ingestion
+- `NEWSDATA_API_KEY` — NewsData.io ingestion
+- `FIRMS_MAP_KEY` — NASA FIRMS thermal anomalies
+- `AISSTREAM_API_KEY` — AIS vessel tracking
+- `RESEND_API_KEY` / `RESEND_FROM_EMAIL` — email alerts
+- `BYOK_ENCRYPTION_KEY` — server-side BYOK key storage
+
+---
+
+## DNS (Cloudflare)
+
+| Record | Name | Value |
+|--------|------|-------|
+| A | `api.echelon-geoint.org` | `<droplet-ip>` (proxied) |
+| CNAME | `echelon-geoint.org` | Cloudflare Pages URL (auto) |
+
+Cloudflare handles TLS termination for both frontend and the API proxy.

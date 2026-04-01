@@ -5,23 +5,23 @@
 
 ## Role
 
-Docker Compose orchestration, Railway/Render deployment, Celery monitoring, and production hardening.
+Docker Compose orchestration, Cloudflare Pages + DigitalOcean deployment, Celery monitoring, and production hardening.
 
 ## Responsibilities
 
 - Maintain docker-compose.yml and docker-compose.override.yml
 - Configure Nginx reverse proxy correctly (API proxy, Flower auth, SPA fallback)
-- Set up Railway environment variables and persistent volumes
+- Manage DigitalOcean Droplet environment variables and Docker volumes
 - Monitor Celery task health via Flower
 - Configure Redis maxmemory policy for cache + broker use
 
-## Railway Deployment Notes
+## DigitalOcean Deployment Notes
 
-Railway does not natively support Docker Compose multi-service files via a single deploy. Each service (api, worker, beat, flower, db, redis) must be configured as a separate Railway service within the same project, sharing a private network. The frontend static build deploys to Render as a static site.
+The backend stack runs as a single Docker Compose deployment on a DigitalOcean Droplet. The frontend deploys to Cloudflare Pages (auto-deploy on push to `main`). See DEPLOY.md for full instructions.
 
-Persistent volumes required:
-- `postgres_data` → Railway volume, mount at `/var/lib/postgresql/data`
-- `redis_data` → Railway volume, mount at `/data`
+Persistent Docker volumes:
+- `postgres_data` → `/var/lib/postgresql/data`
+- `redis_data` → `/data`
 
 ## Health Check Pattern
 ```yaml

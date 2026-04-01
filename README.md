@@ -123,10 +123,10 @@ Open `http://localhost` in your browser.
 
 ## Deployment
 
-Two deployment paths are supported:
+- **Frontend:** Cloudflare Pages (auto-deploys on push to `main`)
+- **Backend:** Docker Compose on a DigitalOcean Droplet
 
-- Managed deployment: Railway for the backend stack plus Render for the static frontend. See [DEPLOY.md](DEPLOY.md).
-- Self-hosted deployment: Docker Compose on a VPS such as DigitalOcean, Hetzner, or similar.
+See [DEPLOY.md](DEPLOY.md) for full instructions.
 
 ### Self-Hosted Production Deploy
 

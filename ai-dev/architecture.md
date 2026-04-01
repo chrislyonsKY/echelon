@@ -297,9 +297,8 @@ All raster work uses `rasterio` with windowed reading — never loads full scene
 
 ## Deployment (Production)
 
-- **Frontend:** Render static site (free tier) — Vite build output
-- **Backend stack:** Railway — Docker Compose services
-  - FastAPI, worker, beat, flower, db (PostGIS), redis
-  - Railway usage-based pricing; estimated ~$20–35/month at steady state
-- **Environment variables:** Set in Railway dashboard, never in committed files
-- **Persistent volumes:** Railway volume mounts for PostGIS data and Redis AOF
+- **Frontend:** Cloudflare Pages — Vite build output (auto-deploys on push to `main`)
+- **Backend stack:** DigitalOcean Droplet — Docker Compose services
+  - FastAPI, worker, beat, flower, db (PostGIS), redis, ollama, nginx
+- **Environment variables:** Set in `.env` on the Droplet, never in committed files
+- **Persistent volumes:** Docker named volumes for PostGIS data and Redis AOF
