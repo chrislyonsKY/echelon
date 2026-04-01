@@ -50,6 +50,8 @@ _INSERT_SIGNAL_SQL = text("""
     bind=True,
     max_retries=2,
     default_retry_delay=600,
+    soft_time_limit=180,
+    time_limit=300,
     acks_late=True,
 )
 def run(self) -> dict:

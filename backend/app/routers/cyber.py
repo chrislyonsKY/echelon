@@ -47,7 +47,8 @@ async def shodan_search(
     try:
         results = await _shodan.search_geo(x_shodan_key, lat, lng, radius_km, query)
     except Exception as exc:
-        raise HTTPException(502, f"Shodan query failed: {str(exc)[:100]}")
+        logger.exception("Shodan query failed")
+        raise HTTPException(502, "External device search failed")
     return {"results": results, "count": len(results), "warning": IP_GEOLOCATION_WARNING}
 
 
@@ -66,7 +67,8 @@ async def censys_search(
     try:
         results = await _censys.search_geo(x_censys_id, x_censys_secret, query, lat, lng, radius_km)
     except Exception as exc:
-        raise HTTPException(502, f"Censys query failed: {str(exc)[:100]}")
+        logger.exception("Censys query failed")
+        raise HTTPException(502, "External host search failed")
     return {"results": results, "count": len(results), "warning": IP_GEOLOCATION_WARNING}
 
 
@@ -83,7 +85,8 @@ async def wigle_wifi(
     try:
         results = await _wigle.search_wifi(x_wigle_name, x_wigle_token, lat_min, lat_max, lng_min, lng_max)
     except Exception as exc:
-        raise HTTPException(502, f"WiGLE query failed: {str(exc)[:100]}")
+        logger.exception("WiGLE WiFi query failed")
+        raise HTTPException(502, "Wireless network search failed")
     return {"results": results, "count": len(results)}
 
 
@@ -100,7 +103,8 @@ async def wigle_cells(
     try:
         results = await _wigle.search_cell_towers(x_wigle_name, x_wigle_token, lat_min, lat_max, lng_min, lng_max)
     except Exception as exc:
-        raise HTTPException(502, f"WiGLE query failed: {str(exc)[:100]}")
+        logger.exception("WiGLE cell tower query failed")
+        raise HTTPException(502, "Cell tower search failed")
     return {"results": results, "count": len(results)}
 
 
@@ -114,7 +118,8 @@ async def get_data_centers(
     try:
         results = await _peeringdb.get_facilities(country)
     except Exception as exc:
-        raise HTTPException(502, f"PeeringDB query failed: {str(exc)[:100]}")
+        logger.exception("PeeringDB facilities query failed")
+        raise HTTPException(502, "Infrastructure data temporarily unavailable")
     return {"results": results, "count": len(results)}
 
 
@@ -126,7 +131,8 @@ async def get_ixps(
     try:
         results = await _peeringdb.get_ixps(country)
     except Exception as exc:
-        raise HTTPException(502, f"PeeringDB query failed: {str(exc)[:100]}")
+        logger.exception("PeeringDB IXP query failed")
+        raise HTTPException(502, "Infrastructure data temporarily unavailable")
     return {"results": results, "count": len(results)}
 
 
@@ -136,7 +142,8 @@ async def get_submarine_cable_landings() -> dict:
     try:
         results = await _cables.get_landing_points()
     except Exception as exc:
-        raise HTTPException(502, f"Cable data fetch failed: {str(exc)[:100]}")
+        logger.exception("Submarine cable data fetch failed")
+        raise HTTPException(502, "Infrastructure data temporarily unavailable")
     return {"results": results, "count": len(results)}
 
 

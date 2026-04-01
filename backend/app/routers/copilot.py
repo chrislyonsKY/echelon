@@ -15,8 +15,10 @@ from typing import Any
 
 import anthropic
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +26,10 @@ from app.database import get_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Rate limiter — 10 copilot requests per minute per IP address.
+# Nginx also enforces 5r/m at the proxy layer; this is defense-in-depth.
+limiter = Limiter(key_func=get_remote_address)
 
 # Supported providers and their default models
 PROVIDERS = {
@@ -271,7 +277,9 @@ class CopilotResponse(BaseModel):
 
 
 @router.post("/chat")
+@limiter.limit("10/minute")
 async def copilot_chat(
+    request_obj: Request,
     request: CopilotRequest,
     x_llm_key: str = Header(alias="X-LLM-Key", default=""),
     x_anthropic_key: str = Header(alias="X-Anthropic-Key", default=""),
@@ -335,8 +343,8 @@ async def copilot_chat(
         raise HTTPException(status_code=503, detail=f"Could not connect to {provider} API")
     except Exception as exc:
         logger.exception("Copilot request failed (%s)", provider)
-        detail = str(exc)[:100] if str(exc) else "Copilot request failed"
-        raise HTTPException(status_code=502, detail=detail)
+        # SECURITY: never expose raw exception — it may contain BYOK API keys
+        raise HTTPException(status_code=502, detail="Copilot request failed")
 
     map_action = _extract_map_action(final_text)
     return CopilotResponse(

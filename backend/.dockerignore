@@ -3,3 +3,15 @@ __pycache__
 .env
 .env.*
 .venv
+.git/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.vscode/
+.idea/
+docs/
+tests/
+ai-dev/
+*.md

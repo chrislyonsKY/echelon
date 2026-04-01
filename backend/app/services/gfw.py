@@ -9,10 +9,12 @@ import asyncio
 import hashlib
 import logging
 import random
+import time
 from datetime import date
 from typing import Any
 
 import httpx
+import redis as sync_redis
 
 from app.config import settings
 
@@ -44,6 +46,11 @@ _BASE_BACKOFF = 2.0
 _PAGE_SIZE = 100
 _MAX_EVENTS_PER_DATASET = 2000  # Cap to prevent runaway pagination
 
+# Circuit breaker: trip after this many consecutive server errors, cooldown for 10 minutes.
+_CB_FAILURE_THRESHOLD = 3
+_CB_COOLDOWN_SECONDS = 600
+_CB_REDIS_KEY = "echelon:gfw:circuit_breaker"
+
 
 class GFWService:
     """Client for the GlobalFishingWatch Events API."""
@@ -55,6 +62,42 @@ class GFWService:
             headers={"Authorization": f"Bearer {self._token}"},
             timeout=120.0,
         )
+        # Circuit breaker state backed by Redis so all worker replicas share it.
+        try:
+            self._redis = sync_redis.from_url(settings.redis_url, decode_responses=True)
+        except Exception:
+            self._redis = None
+
+    def _is_circuit_open(self) -> bool:
+        """Return True if the circuit is tripped (GFW unavailable)."""
+        if self._redis is None:
+            return False
+        try:
+            val = self._redis.get(_CB_REDIS_KEY)
+            return val is not None and int(val) >= _CB_FAILURE_THRESHOLD
+        except Exception:
+            return False
+
+    def _record_failure(self) -> None:
+        """Increment the consecutive-failure counter with a TTL cooldown."""
+        if self._redis is None:
+            return
+        try:
+            pipe = self._redis.pipeline()
+            pipe.incr(_CB_REDIS_KEY)
+            pipe.expire(_CB_REDIS_KEY, _CB_COOLDOWN_SECONDS)
+            pipe.execute()
+        except Exception:
+            pass
+
+    def _reset_failures(self) -> None:
+        """Clear the failure counter on a successful request."""
+        if self._redis is None:
+            return
+        try:
+            self._redis.delete(_CB_REDIS_KEY)
+        except Exception:
+            pass
 
     async def fetch_events(
         self,
@@ -80,6 +123,10 @@ class GFWService:
         """
         types = event_types or list(INGEST_EVENT_TYPES)
         all_events: list[dict[str, Any]] = []
+
+        if self._is_circuit_open():
+            logger.warning("GFW circuit breaker OPEN — skipping fetch (cooldown %ds)", _CB_COOLDOWN_SECONDS)
+            return all_events
 
         for event_type in types:
             dataset = GFW_DATASETS.get(event_type)
@@ -172,9 +219,11 @@ class GFWService:
 
             if response.status_code not in (429, 503):
                 response.raise_for_status()
+                self._reset_failures()
                 return response
 
             last_response = response
+            self._record_failure()
 
             # Respect Retry-After header if present
             retry_after = response.headers.get("Retry-After")

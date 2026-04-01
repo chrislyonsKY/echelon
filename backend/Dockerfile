@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 
-# Install system dependencies for PostGIS / GDAL / rasterio
+# Install system dependencies for PostGIS / GDAL / rasterio + init system
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    dumb-init \
     gdal-bin \
     libgdal-dev \
     libpq-dev \
@@ -21,4 +22,6 @@ COPY . .
 RUN chown -R echelon:echelon /app
 USER echelon
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# dumb-init handles PID 1 signal forwarding for graceful shutdown
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-graceful-shutdown", "30"]

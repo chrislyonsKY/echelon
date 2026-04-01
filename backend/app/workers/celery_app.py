@@ -39,6 +39,9 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     result_expires=86400,          # 24 hours
     worker_prefetch_multiplier=1,  # Fair task distribution
+    task_soft_time_limit=120,      # Default soft limit — tasks can override
+    task_time_limit=180,           # Default hard limit — tasks can override
+    worker_max_tasks_per_child=200,  # Recycle workers to prevent memory leaks
 )
 
 # Load periodic task schedule for Celery Beat

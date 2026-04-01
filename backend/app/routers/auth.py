@@ -8,10 +8,11 @@ Flow:
   POST /auth/logout    → clear session cookie
 """
 import logging
+import secrets
 import uuid
 
 import httpx
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlalchemy import text
@@ -29,20 +30,34 @@ GITHUB_USER_URL = "https://api.github.com/user"
 
 COOKIE_NAME = "echelon_session"
 COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
+_OAUTH_STATE_COOKIE = "echelon_oauth_state"
+_OAUTH_STATE_MAX_AGE = 300  # 5 minutes — must complete OAuth within this window
 
 _serializer = URLSafeTimedSerializer(settings.secret_key)
 
 
 @router.get("/login")
-async def login() -> RedirectResponse:
+async def login(request: Request) -> RedirectResponse:
     """Redirect the user to GitHub OAuth authorization."""
-    params = f"client_id={settings.github_client_id}&scope=read:user,user:email"
-    return RedirectResponse(f"{GITHUB_AUTHORIZE_URL}?{params}")
+    # Generate CSRF state nonce to prevent OAuth flow hijacking
+    state = secrets.token_urlsafe(32)
+    params = f"client_id={settings.github_client_id}&scope=read:user,user:email&state={state}"
+    redirect = RedirectResponse(f"{GITHUB_AUTHORIZE_URL}?{params}")
+    redirect.set_cookie(
+        key=_OAUTH_STATE_COOKIE,
+        value=state,
+        max_age=_OAUTH_STATE_MAX_AGE,
+        httponly=True,
+        samesite="lax",  # lax required here — callback is a cross-site redirect from GitHub
+        secure=_should_use_secure_cookie(request),
+    )
+    return redirect
 
 
 @router.get("/callback")
 async def callback(
     code: str,
+    state: str,
     request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
@@ -52,6 +67,12 @@ async def callback(
     Exchanges code for access token, fetches GitHub user profile,
     upserts user record, and sets an HttpOnly session cookie.
     """
+    # Validate CSRF state nonce
+    expected_state = request.cookies.get(_OAUTH_STATE_COOKIE)
+    if not expected_state or not secrets.compare_digest(expected_state, state):
+        logger.warning("GitHub OAuth: state mismatch — possible CSRF")
+        raise HTTPException(403, "OAuth state validation failed")
+
     async with httpx.AsyncClient() as client:
         # Exchange code for access token
         token_resp = await client.post(
@@ -117,9 +138,11 @@ async def callback(
         value=session_token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
         secure=_should_use_secure_cookie(request),
     )
+    # Clear the OAuth state cookie — no longer needed
+    redirect.delete_cookie(_OAUTH_STATE_COOKIE)
     return redirect
 
 

@@ -74,6 +74,8 @@ _UPSERT_BASELINE_SQL = text("""
     name="app.workers.tasks.convergence.recompute_all",
     bind=True,
     max_retries=1,
+    soft_time_limit=300,
+    time_limit=600,
     acks_late=True,
 )
 def recompute_all(self) -> dict:

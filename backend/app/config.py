@@ -4,13 +4,24 @@ Echelon Application Configuration
 All settings sourced from environment variables via pydantic-settings.
 Never hardcode values here — use .env or Railway environment variables.
 """
+import logging
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_config_logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @field_validator("secret_key")
+    @classmethod
+    def secret_key_min_length(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("secret_key must be at least 32 characters")
+        return v
 
     # ── Application ──────────────────────────────────────────────────────────
     secret_key: str
@@ -65,5 +76,21 @@ class Settings(BaseSettings):
     enable_eo_change_detection: bool = True
     enable_server_side_byok_storage: bool = True
 
+    def warn_missing_optional(self) -> None:
+        """Log warnings for missing optional integrations so operators know what's disabled."""
+        optional_pairs = [
+            (self.github_client_id and self.github_client_secret, "GitHub OAuth"),
+            (self.gfw_api_token, "Global Fishing Watch ingestion"),
+            (self.newsdata_api_key, "NewsData.io ingestion"),
+            (self.firms_map_key, "NASA FIRMS ingestion"),
+            (self.aisstream_api_key, "AISStream ingestion"),
+            (self.resend_api_key and self.resend_from_email, "Email alerts via Resend"),
+            (self.byok_encryption_key, "Server-side BYOK key storage"),
+        ]
+        for present, label in optional_pairs:
+            if not present:
+                _config_logger.warning("Optional integration disabled: %s (key not set)", label)
+
 
 settings = Settings()
+settings.warn_missing_optional()

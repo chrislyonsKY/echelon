@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.database import engine
@@ -47,8 +49,23 @@ def create_app() -> FastAPI:
         allow_origins=settings.allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "PATCH"],
-        allow_headers=["*"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-LLM-Key",
+            "X-Anthropic-Key",
+            "X-Shodan-Key",
+            "X-Censys-Id",
+            "X-Censys-Secret",
+            "X-WiGLE-Name",
+            "X-WiGLE-Token",
+        ],
     )
+
+    # Register slowapi rate-limit handler (used by copilot endpoint)
+    from app.routers.copilot import limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(convergence.router, prefix="/api/convergence", tags=["convergence"])

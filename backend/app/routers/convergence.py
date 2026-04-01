@@ -32,6 +32,8 @@ async def get_convergence_tiles(
             west, south, east, north = [float(x) for x in bbox.split(",")]
         except ValueError:
             raise HTTPException(400, "bbox must be four comma-separated floats: west,south,east,north")
+        if not (-90 <= south < north <= 90) or not (-180 <= west < east <= 180):
+            raise HTTPException(400, "bbox out of range: lat must be -90..90, lon must be -180..180, and min < max")
         params.update(west=west, south=south, east=east, north=north)
         # Filter cells whose center falls within the viewport bbox.
         # h3_convergence_scores stores an h3_index string; we join signals
@@ -134,6 +136,8 @@ async def get_regional_trends(
             west, south, east, north = [float(x) for x in bbox.split(",")]
         except ValueError:
             raise HTTPException(400, "bbox must be four comma-separated floats")
+        if not (-90 <= south < north <= 90) or not (-180 <= west < east <= 180):
+            raise HTTPException(400, "bbox out of range: lat must be -90..90, lon must be -180..180, and min < max")
         params.update(west=west, south=south, east=east, north=north)
         bbox_clause = "AND ST_Intersects(location, ST_MakeEnvelope(:west, :south, :east, :north, 4326))"
 

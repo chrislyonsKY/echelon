@@ -70,7 +70,11 @@ class AISStreamService:
         positions: list[dict[str, Any]] = []
 
         try:
-            async with websockets.connect(AISSTREAM_WS_URL) as ws:
+            async with websockets.connect(
+                AISSTREAM_WS_URL,
+                open_timeout=15,
+                close_timeout=10,
+            ) as ws:
                 # Must subscribe within 3 seconds of connecting
                 await ws.send(json.dumps(subscription))
                 logger.info(

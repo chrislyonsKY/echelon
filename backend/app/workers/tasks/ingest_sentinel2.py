@@ -49,6 +49,8 @@ _INSERT_SIGNAL_SQL = text("""
     name="app.workers.tasks.ingest_sentinel2.trigger_scene_jobs",
     bind=True,
     max_retries=2,
+    soft_time_limit=120,
+    time_limit=180,
     acks_late=True,
 )
 def trigger_scene_jobs(self) -> dict:
@@ -146,6 +148,8 @@ async def _trigger_jobs() -> dict:
     bind=True,
     max_retries=2,
     default_retry_delay=600,
+    soft_time_limit=300,
+    time_limit=600,
     acks_late=True,
 )
 def process_scene(

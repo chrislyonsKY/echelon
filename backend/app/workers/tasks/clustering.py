@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
     name="app.workers.tasks.clustering.cluster_events",
     bind=True,
     max_retries=1,
+    soft_time_limit=300,
+    time_limit=600,
     acks_late=True,
 )
 def cluster_events(self) -> dict:

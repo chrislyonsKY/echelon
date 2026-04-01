@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
 
   # ── Reverse proxy ─────────────────────────────────────────────────────────
@@ -13,6 +19,7 @@ services:
       - api
       - frontend
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 
@@ -36,8 +43,8 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echelon:${POSTGRES_PASSWORD}@db:5432/echelon
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
       - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
       db:
@@ -46,7 +53,20 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1G
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 
@@ -60,14 +80,27 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echelon:${POSTGRES_PASSWORD}@db:5432/echelon
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping --timeout 10 2>/dev/null | grep -q OK"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 
@@ -81,14 +114,27 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echelon:${POSTGRES_PASSWORD}@db:5432/echelon
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping --timeout 10 2>/dev/null | grep -q OK"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 
@@ -98,17 +144,18 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: echelon_flower
-    command: celery -A app.workers.celery_app flower --port=5555 --url-prefix=flower
+    command: celery -A app.workers.celery_app flower --port=5555 --url-prefix=flower --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD}
     env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echelon:${POSTGRES_PASSWORD}@db:5432/echelon
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
     depends_on:
       - redis
       - worker
     # Flower is internal only — accessible via Nginx at /flower/ (protected)
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 
@@ -142,7 +189,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 
@@ -150,15 +202,20 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: echelon_redis
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $REDIS_PASSWORD ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - echelon_net
 

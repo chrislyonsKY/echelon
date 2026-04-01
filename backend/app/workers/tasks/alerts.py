@@ -30,6 +30,8 @@ ALERT_COOLDOWN_HOURS = 6
     name="app.workers.tasks.alerts.check_all_aois",
     bind=True,
     max_retries=2,
+    soft_time_limit=120,
+    time_limit=180,
     acks_late=True,
 )
 def check_all_aois(self) -> dict:

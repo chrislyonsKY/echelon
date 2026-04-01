@@ -18,6 +18,42 @@ from app.database import get_session
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+@router.get("/live")
+async def liveness() -> dict:
+    """Lightweight liveness probe — returns 200 if the process is running."""
+    return {"status": "ok"}
+
+
+@router.get("/ready")
+async def readiness(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Readiness probe — confirms both DB and Redis are reachable."""
+    errors: list[str] = []
+
+    # Check database
+    try:
+        await session.execute(text("SELECT 1"))
+    except Exception:
+        errors.append("database")
+
+    # Check Redis
+    try:
+        r = _get_redis()
+        r.ping()
+        r.close()
+    except Exception:
+        errors.append("redis")
+
+    if errors:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unavailable", "failing": errors},
+        )
+    return {"status": "ready"}
+
 # All known ingestor source keys (must match Redis key pattern)
 SOURCES = [
     {"key": "gfw", "name": "Global Fishing Watch", "schedule": "12h"},
