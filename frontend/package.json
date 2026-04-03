@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
+    "@anthropic-ai/sdk": "^0.82.0",
     "@deck.gl/core": "^9.0.0",
     "@deck.gl/geo-layers": "^9.0.0",
     "@deck.gl/layers": "^9.0.0",
