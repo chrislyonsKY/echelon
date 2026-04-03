@@ -1,47 +1,50 @@
 /**
- * BasemapSwitcher — toggle between satellite, streets, and topographic basemaps.
- * Uses free tile sources (no API key required).
+ * BasemapSwitcher — toggle between Esri basemap styles.
+ * Requires VITE_ESRI_API_KEY env var (set in .env.local or Cloudflare Pages).
  */
 import { useState } from "react";
 import { useEchelonStore } from "@/store/echelonStore";
+
+const ESRI_KEY = import.meta.env.VITE_ESRI_API_KEY || "";
+const esriStyle = (name: string) =>
+  `https://basemapstyles-api.arcgis.com/arcgis/rest/services/styles/v2/styles/${name}?token=${ESRI_KEY}`;
 
 interface BasemapOption {
   id: string;
   label: string;
   url: string;
-  preview: string; // CSS gradient as preview
+  preview: string;
 }
 
 const BASEMAPS: BasemapOption[] = [
   {
     id: "dark",
     label: "Dark",
-    url: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    url: esriStyle("arcgis/dark-gray"),
     preview: "linear-gradient(135deg, #0d1117, #1a2332)",
   },
   {
     id: "satellite",
-    label: "Satellite",
-    url: "https://api.maptiler.com/maps/hybrid/style.json?key=get_your_own_OpIi9ZULNHzrESv6T2vL",
+    label: "Imagery",
+    url: esriStyle("arcgis/imagery"),
     preview: "linear-gradient(135deg, #1a3a1a, #0a1a2a)",
   },
   {
     id: "streets",
     label: "Streets",
-    url: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+    url: esriStyle("arcgis/streets"),
     preview: "linear-gradient(135deg, #e8e8e8, #d0d0d0)",
   },
   {
     id: "topo",
     label: "Topo",
-    url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    url: esriStyle("arcgis/topographic"),
     preview: "linear-gradient(135deg, #f0ebe3, #ddd5c8)",
   },
   {
-    id: "osm",
-    label: "OSM",
-    // OpenFreeMap serves OSM tiles with no key
-    url: "https://tiles.openfreemap.org/styles/liberty",
+    id: "navigation",
+    label: "Nav",
+    url: esriStyle("arcgis/navigation"),
     preview: "linear-gradient(135deg, #f2efe9, #c8d7c5)",
   },
 ];
