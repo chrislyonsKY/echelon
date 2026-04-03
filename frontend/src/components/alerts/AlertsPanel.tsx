@@ -6,10 +6,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useEchelonStore } from "@/store/echelonStore";
 import { alertsApi, type AlertRecord, type AOI } from "@/services/api";
 import { format } from "date-fns";
+import WatchlistDashboard from "./WatchlistDashboard";
 
 export default function AlertsPanel() {
   const { alertPanelOpen, user } = useEchelonStore();
-  const [tab, setTab] = useState<"alerts" | "watchlists">("alerts");
+  const [tab, setTab] = useState<"dashboard" | "alerts" | "watchlists">("dashboard");
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [aois, setAois] = useState<AOI[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -79,14 +80,14 @@ export default function AlertsPanel() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--color-border)" }}>
         <div style={{ display: "flex", gap: 8 }}>
-          {(["alerts", "watchlists"] as const).map((t) => (
+          {(["dashboard", "alerts", "watchlists"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: "4px 10px", borderRadius: 4, border: "none", fontSize: 11, fontWeight: 600,
               textTransform: "uppercase", letterSpacing: "0.05em", cursor: "pointer",
               background: tab === t ? "var(--color-accent-muted)" : "none",
               color: tab === t ? "var(--color-accent)" : "var(--color-text-muted)",
             }}>
-              {t === "alerts" ? `Alerts (${alerts.length})` : `Watchlists (${aois.length})`}
+              {t === "dashboard" ? "Dashboard" : t === "alerts" ? `Alerts (${alerts.length})` : `Watchlists (${aois.length})`}
             </button>
           ))}
         </div>
@@ -99,6 +100,8 @@ export default function AlertsPanel() {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: "auto", padding: "8px 0" }}>
+        {tab === "dashboard" && <WatchlistDashboard />}
+
         {tab === "alerts" && (
           alerts.length === 0 ? (
             <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: 12 }}>

@@ -162,6 +162,71 @@ async def create_aoi(
     }
 
 
+@router.get("/dashboard")
+async def get_dashboard(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user_id: str = Depends(require_auth),
+) -> list[dict]:
+    """Return all AOIs with current status: max Z-score, signal count, recent alerts."""
+    import json
+
+    result = await session.execute(
+        text("""
+            SELECT
+                ao.id, ao.name, ao.alert_threshold, ao.alert_email, ao.created_at,
+                ST_AsGeoJSON(ao.geometry::geometry) AS geojson,
+                (
+                    SELECT MAX(h.z_score)
+                    FROM h3_convergence_scores h
+                    WHERE h.resolution = 7
+                      AND ST_Intersects(
+                          ST_SetSRID(ST_MakePoint(
+                              (ST_XMin(ao.geometry::geometry) + ST_XMax(ao.geometry::geometry)) / 2,
+                              (ST_YMin(ao.geometry::geometry) + ST_YMax(ao.geometry::geometry)) / 2
+                          ), 4326)::geography,
+                          ao.geometry
+                      )
+                ) AS max_z_score,
+                (
+                    SELECT COUNT(*)
+                    FROM signals s
+                    WHERE ST_Intersects(s.location, ao.geometry)
+                      AND s.occurred_at >= NOW() - INTERVAL '7 days'
+                ) AS signal_count_7d,
+                (
+                    SELECT COUNT(*)
+                    FROM alerts al
+                    WHERE al.aoi_id = ao.id AND al.read_at IS NULL
+                ) AS unread_alert_count,
+                (
+                    SELECT MAX(al.fired_at)
+                    FROM alerts al
+                    WHERE al.aoi_id = ao.id
+                ) AS last_alert_at
+            FROM aois ao
+            WHERE ao.user_id = :user_id
+            ORDER BY ao.created_at DESC
+        """),
+        {"user_id": user_id},
+    )
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "alertThreshold": r.alert_threshold,
+            "alertEmail": r.alert_email,
+            "geometry": json.loads(r.geojson),
+            "maxZScore": round(r.max_z_score, 2) if r.max_z_score is not None else None,
+            "signalCount7d": r.signal_count_7d,
+            "unreadAlertCount": r.unread_alert_count,
+            "lastAlertAt": r.last_alert_at.isoformat() if r.last_alert_at else None,
+            "createdAt": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in result.fetchall()
+    ]
+
+
 @router.delete("/aois/{aoi_id}")
 async def delete_aoi(
     aoi_id: str,

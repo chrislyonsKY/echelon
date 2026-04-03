@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "Echelon: Open-Source GEOINT Convergence Dashboard"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - family-names: Lyons
+    given-names: Chris
+    affiliation: Independent Researcher
+repository-code: "https://github.com/chrislyonsKY/echelon"
+license: Apache-2.0
+keywords:
+  - GEOINT
+  - OSINT
+  - conflict monitoring
+  - maritime surveillance
+  - convergence analysis
+  - H3 hexagonal grid
+  - anomaly detection
+abstract: >-
+  Echelon is a multi-source GEOINT convergence dashboard that fuses 20+
+  open data sources into a single intelligence picture. It computes Z-score
+  anomalies per H3 hexagonal cell across independent signal types (GDELT
+  conflict events, GFW vessel anomalies, NASA FIRMS thermal data, Sentinel-2
+  EO change detection, OpenSky military aviation, AIS vessel tracking, OSM
+  infrastructure changes, and news/OSINT feeds) and renders the result as
+  a real-time convergence heatmap.

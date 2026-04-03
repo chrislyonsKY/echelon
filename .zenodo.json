@@ -1,0 +1,41 @@
+{
+  "title": "Echelon: Open-Source GEOINT Convergence Dashboard",
+  "description": "Multi-source GEOINT conflict and maritime activity monitoring dashboard. Fuses 20+ open data sources (GDELT, Global Fishing Watch, NASA FIRMS, OpenSky, Sentinel-2, AIS, OSM) into a single convergence heatmap via H3 hexagonal cells and Z-score anomaly detection.",
+  "creators": [
+    {
+      "name": "Lyons, Chris",
+      "affiliation": "Independent Researcher",
+      "orcid": ""
+    }
+  ],
+  "keywords": [
+    "GEOINT",
+    "OSINT",
+    "conflict monitoring",
+    "maritime surveillance",
+    "convergence analysis",
+    "H3 hexagonal grid",
+    "anomaly detection",
+    "geospatial intelligence",
+    "open source intelligence",
+    "AIS tracking",
+    "remote sensing"
+  ],
+  "license": {
+    "id": "Apache-2.0"
+  },
+  "upload_type": "software",
+  "access_right": "open",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/chrislyonsKY/echelon",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ],
+  "communities": [
+    {
+      "identifier": "open-source-intelligence"
+    }
+  ]
+}

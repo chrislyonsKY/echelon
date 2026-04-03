@@ -73,6 +73,7 @@ export default function EchelonMap() {
   const {
     viewState, setViewState, setSelectedCell,
     activeResolution, dateRange, basemapStyle, theaterMode,
+    layerVisibility,
   } = useEchelonStore();
 
   const [tiles, setTiles] = useState<ConvergenceTile[]>([]);
@@ -332,7 +333,7 @@ export default function EchelonMap() {
         onMouseMove={handleMouseMove}
         mapStyle={getBasemapStyleUrl(basemapStyle)}
         attributionControl={false}
-        interactiveLayerIds={["convergence-hex-fill", "convergence-circles", "signal-dots", "opensky-aircraft", "imagery-footprints-outline"]}
+        interactiveLayerIds={["convergence-hex-fill", "convergence-circles", "signal-dots", "opensky-aircraft", "imagery-footprints-outline", "firms-core"]}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -530,6 +531,50 @@ export default function EchelonMap() {
             }}
           />
         </Source>
+
+        {/* ── FIRMS thermal layer (dedicated heat-glow when toggled on) ── */}
+        {layerVisibility.firmsThermal && (
+          <Source id="firms-thermal" type="geojson" data={{
+            type: "FeatureCollection",
+            features: signals
+              .filter((s) => s.source === "firms")
+              .map((s) => ({
+                type: "Feature" as const,
+                geometry: { type: "Point" as const, coordinates: [s.location.lng, s.location.lat] },
+                properties: {
+                  signalId: s.id,
+                  source: "firms",
+                  signalType: s.signalType,
+                  weight: s.weight,
+                  occurredAt: s.occurredAt,
+                },
+              })),
+          }}>
+            {/* Outer heat glow */}
+            <Layer
+              id="firms-glow"
+              type="circle"
+              paint={{
+                "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 10, 8, 18, 12, 28],
+                "circle-color": "#ea580c",
+                "circle-opacity": 0.25,
+                "circle-blur": 1,
+              }}
+            />
+            {/* Inner bright core */}
+            <Layer
+              id="firms-core"
+              type="circle"
+              paint={{
+                "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 8, 6, 12, 10],
+                "circle-color": "#fbbf24",
+                "circle-opacity": 0.9,
+                "circle-stroke-width": 1,
+                "circle-stroke-color": "#ea580c",
+              }}
+            />
+          </Source>
+        )}
 
         {/* ── Popup ──────────────────────────────────────────────────── */}
         {popup && (

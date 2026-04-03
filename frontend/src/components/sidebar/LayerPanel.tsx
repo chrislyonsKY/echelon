@@ -9,6 +9,7 @@ const LAYERS: Array<{ id: keyof LayerVisibility; label: string; description: str
   { id: "gfwVessels",          label: "GFW Vessel Anomalies",   description: "AIS gaps, loitering, port avoidance" },
   { id: "sentinel2",           label: "Sentinel-2 EO",          description: "Change detection (NBR anomalies)" },
   { id: "osmInfrastructure",   label: "OSM Infrastructure",     description: "Military sites, airfields, pipelines" },
+  { id: "firmsThermal",        label: "FIRMS Thermal/Fire",     description: "NASA FIRMS active fire and thermal anomalies" },
   { id: "landscanPopulation",  label: "LandScan Population",    description: "NGA population density context" },
 ];
 

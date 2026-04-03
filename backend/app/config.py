@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     def secret_key_min_length(cls, v: str) -> str:
         if len(v) < 32:
             raise ValueError("secret_key must be at least 32 characters")
+        # Reject placeholder values that ship in .env.example
+        _blocked = {"change_me", "replace_me", "your_secret", "example", "placeholder", "xxxxxxxx"}
+        if any(p in v.lower() for p in _blocked):
+            raise ValueError("secret_key contains a placeholder value — generate a real key: python -c 'import secrets; print(secrets.token_hex(32))'")
         return v
 
     # ── Application ──────────────────────────────────────────────────────────

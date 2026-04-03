@@ -9,6 +9,7 @@ Task is idempotent — duplicate alerts are prevented by checking
 if an alert was already fired for the same cell in the same scoring cycle.
 """
 import asyncio
+import html
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -192,14 +193,14 @@ def _send_alert_email(
         resend.Emails.send({
             "from": settings.resend_from_email,
             "to": [to_email],
-            "subject": f"Echelon Alert: {aoi_name} — {len(cells)} cell(s) above {threshold}σ",
+            "subject": f"Echelon Alert: {html.escape(aoi_name)} — {len(cells)} cell(s) above {threshold}σ",
             "html": f"""
                 <div style="font-family: -apple-system, sans-serif; max-width: 500px;">
                     <h2 style="color: #ef4444;">Echelon Convergence Alert</h2>
-                    <p>Hi {username},</p>
-                    <p>Your AOI <strong>{aoi_name}</strong> has <strong>{len(cells)} H3 cell(s)</strong>
+                    <p>Hi {html.escape(username)},</p>
+                    <p>Your AOI <strong>{html.escape(aoi_name)}</strong> has <strong>{len(cells)} H3 cell(s)</strong>
                        exceeding your Z-score threshold of <strong>{threshold}σ</strong>:</p>
-                    <pre style="background: #1f2937; color: #d1d5db; padding: 12px; border-radius: 6px; font-size: 13px;">{cell_rows}</pre>
+                    <pre style="background: #1f2937; color: #d1d5db; padding: 12px; border-radius: 6px; font-size: 13px;">{html.escape(str(cell_rows))}</pre>
                     <p><a href="https://echelon-geoint.org" style="color: #3b82f6;">Open Echelon Dashboard</a></p>
                     <p style="color: #6b7280; font-size: 12px;">
                         You're receiving this because you enabled email alerts for this AOI.

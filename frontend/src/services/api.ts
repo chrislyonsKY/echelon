@@ -254,14 +254,134 @@ export const imageryApi = {
 
 // ── Copilot API ───────────────────────────────────────────────────────────────
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  provider: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  provider: string;
+  messages: Array<{ role: string; content: string; timestamp?: string }>;
+  mapContext: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CopilotStreamEvent {
+  type: "text" | "tool_start" | "tool_end" | "map_action" | "done" | "error";
+  content?: string;
+  name?: string;
+  summary?: string;
+  detail?: string;
+  action?: {
+    type: string;
+    center?: [number, number];
+    zoom?: number;
+    highlightCells?: string[];
+    activeLayers?: Record<string, boolean>;
+  };
+}
+
 export const copilotApi = {
   chat: (request: CopilotRequest, byokKey: string) =>
     apiClient.post<CopilotResponse>("/copilot/chat", request, {
       headers: { "X-LLM-Key": byokKey, "X-Anthropic-Key": byokKey } as Record<string, string>,
     }),
+
+  listConversations: () =>
+    apiClient.get<ConversationSummary[]>("/copilot/conversations"),
+
+  saveConversation: (body: { title: string; provider: string; messages: Array<{ role: string; content: string }>; mapContext?: Record<string, unknown> }) =>
+    apiClient.post<{ id: string; title: string }>("/copilot/conversations", body),
+
+  loadConversation: (id: string) =>
+    apiClient.get<ConversationDetail>(`/copilot/conversations/${id}`),
+
+  updateConversation: (id: string, body: { title?: string; messages?: Array<{ role: string; content: string }> }) =>
+    apiClient.patch<{ ok: boolean }>(`/copilot/conversations/${id}`, body),
+
+  deleteConversation: (id: string) =>
+    apiClient.delete<{ ok: boolean }>(`/copilot/conversations/${id}`),
+
+  // NOTE: chatStream uses raw fetch() because the request() wrapper awaits
+  // the full response as JSON. SSE streaming requires reading the body
+  // incrementally via ReadableStream. This mirrors the same credential and
+  // header patterns as request().
+  chatStream: async function* (
+    request: CopilotRequest,
+    byokKey: string,
+  ): AsyncGenerator<CopilotStreamEvent> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    // SECURITY: BYOK key — only send header when key is present
+    if (byokKey) {
+      headers["X-LLM-Key"] = byokKey;
+      headers["X-Anthropic-Key"] = byokKey;
+    }
+
+    const response = await fetch(`${BASE_URL}/copilot/chat/stream`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      yield { type: "error", detail: `HTTP ${response.status}` };
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      yield { type: "error", detail: "No response body" };
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            yield JSON.parse(line.slice(6)) as CopilotStreamEvent;
+          } catch {
+            // skip malformed JSON
+          }
+        }
+      }
+    }
+  },
 };
 
 // ── Alerts API ────────────────────────────────────────────────────────────────
+
+export interface WatchlistStatus {
+  id: string;
+  name: string;
+  alertThreshold: number;
+  alertEmail: boolean;
+  geometry: GeoJSON.Polygon;
+  maxZScore: number | null;
+  signalCount7d: number;
+  unreadAlertCount: number;
+  lastAlertAt: string | null;
+  createdAt: string;
+}
 
 export const alertsApi = {
   getUnread: () => apiClient.get<AlertRecord[]>("/alerts/unread"),
@@ -270,6 +390,7 @@ export const alertsApi = {
   createAoi: (aoi: Omit<AOI, "id" | "createdAt">) =>
     apiClient.post<AOI>("/alerts/aois", aoi),
   deleteAoi: (aoiId: string) => apiClient.delete<void>(`/alerts/aois/${aoiId}`),
+  getDashboard: () => apiClient.get<WatchlistStatus[]>("/alerts/dashboard"),
 };
 
 // ── Provenance API ───────────────────────────────────────────────────────

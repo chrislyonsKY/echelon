@@ -10,6 +10,8 @@
 ![DigitalOcean](https://img.shields.io/badge/DigitalOcean-0080FF?logo=digitalocean&logoColor=white)
 ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?logo=cloudflare&logoColor=white)
 ![Status](https://img.shields.io/badge/status-active-brightgreen)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/b7c0c00ff56a4244b74a656c18995998)](https://app.codacy.com/gh/chrislyonsKY/echelon/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
 
 > Open-source GEOINT convergence dashboard for conflict and maritime monitoring. 20+ live data sources fused into a single intelligence picture.
 
@@ -234,6 +236,22 @@ Echelon is an OSINT research tool provided "as is" without warranty. It is **not
 This tool must not be used for targeting individuals, surveillance, offensive operations, or any unlawful purpose. Users are responsible for compliance with all applicable laws. Echelon is not affiliated with any government or intelligence agency.
 
 All data comes from publicly available open sources. See [DISCLAIMER.md](DISCLAIMER.md) for the full legal disclaimer.
+
+## Citing Echelon
+
+If you use Echelon in your research, please cite it:
+
+```bibtex
+@software{lyons_echelon,
+  author       = {Lyons, Chris},
+  title        = {Echelon: Open-Source GEOINT Convergence Dashboard},
+  license      = {Apache-2.0},
+  url          = {https://github.com/chrislyonsKY/echelon},
+  doi          = {10.5281/zenodo.XXXXXXX}
+}
+```
+
+A `CITATION.cff` file is included for GitHub's citation widget. Zenodo archives each release with a persistent DOI.
 
 ## License
 

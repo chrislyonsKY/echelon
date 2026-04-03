@@ -338,3 +338,20 @@ class Alert(Base):
     outcome_notes  = Column(Text)
 
     aoi = relationship("AOI", back_populates="alerts")
+
+
+class CopilotConversation(Base):
+    """Persistent copilot chat history for authenticated users."""
+
+    __tablename__ = "copilot_conversations"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title       = Column(Text, nullable=False)
+    provider    = Column(Text, nullable=False, default="ollama")
+    messages    = Column(JSONB, nullable=False, default=list)
+    map_context = Column(JSONB)
+    created_at  = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at  = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    user = relationship("User")

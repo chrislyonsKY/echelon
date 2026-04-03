@@ -1,20 +1,22 @@
-import { useEffect } from "react";
-import EchelonMap from "@/components/map/EchelonMap";
-import InvestigationSidebar from "@/components/sidebar/InvestigationSidebar";
-import CopilotPanel from "@/components/copilot/CopilotPanel";
-import EventFeed from "@/components/EventFeed";
-import AlertBell from "@/components/alerts/AlertBell";
+import { useEffect, lazy, Suspense } from "react";
 import TopBar from "@/components/TopBar";
 import DisclaimerFooter from "@/components/DisclaimerFooter";
-import MethodologyPage from "@/components/MethodologyPage";
-import AlertsPanel from "@/components/alerts/AlertsPanel";
-import SourceHealth from "@/components/SourceHealth";
-import TrendTable from "@/components/TrendTable";
-import EventDetail from "@/components/EventDetail";
-import CountryOverview from "@/components/CountryOverview";
-import TheaterOverlay from "@/components/TheaterOverlay";
+import AlertBell from "@/components/alerts/AlertBell";
 import { useEchelonStore } from "@/store/echelonStore";
 import { apiClient } from "@/services/api";
+
+// Lazy-load heavy components — EchelonMap pulls in MapLibre (~800KB) and Deck.gl
+const EchelonMap = lazy(() => import("@/components/map/EchelonMap"));
+const InvestigationSidebar = lazy(() => import("@/components/sidebar/InvestigationSidebar"));
+const CopilotPanel = lazy(() => import("@/components/copilot/CopilotPanel"));
+const EventFeed = lazy(() => import("@/components/EventFeed"));
+const AlertsPanel = lazy(() => import("@/components/alerts/AlertsPanel"));
+const MethodologyPage = lazy(() => import("@/components/MethodologyPage"));
+const SourceHealth = lazy(() => import("@/components/SourceHealth"));
+const TrendTable = lazy(() => import("@/components/TrendTable"));
+const EventDetail = lazy(() => import("@/components/EventDetail"));
+const CountryOverview = lazy(() => import("@/components/CountryOverview"));
+const TheaterOverlay = lazy(() => import("@/components/TheaterOverlay"));
 
 /**
  * Root application component.
@@ -41,40 +43,68 @@ export default function App() {
       .catch(() => setUser(null));
   }, [setUser]);
 
-  // Open event-detail permalink in EventsPanel on initial load.
+  // Restore state from permalink on initial load.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Event permalink
     const eventId = params.get("event");
-    if (!eventId) return;
-    useEchelonStore.setState({
-      sidebarOpen: true,
-      sidebarTab: "events",
-      selectedEventId: eventId,
-    });
+    if (eventId) {
+      useEchelonStore.setState({
+        sidebarOpen: true,
+        sidebarTab: "events",
+        selectedEventId: eventId,
+      });
+    }
+
+    // Map view permalink (from copilot share)
+    const lng = params.get("lng");
+    const lat = params.get("lat");
+    const zoom = params.get("z");
+    if (lng && lat) {
+      const store = useEchelonStore.getState();
+      store.setViewState({
+        ...store.viewState,
+        longitude: parseFloat(lng),
+        latitude: parseFloat(lat),
+        zoom: zoom ? parseFloat(zoom) : store.viewState.zoom ?? 2,
+      });
+    }
+    const dateFrom = params.get("from");
+    const dateTo = params.get("to");
+    if (dateFrom && dateTo) {
+      useEchelonStore.getState().setDateRange(new Date(dateFrom), new Date(dateTo));
+    }
   }, []);
 
   return (
     <div className="echelon-root">
       {!theaterMode && <TopBar />}
-      <div className="echelon-canvas">
-        <EchelonMap />
-        {sidebarOpen && !theaterMode && <InvestigationSidebar />}
-        {copilotOpen && !theaterMode && <CopilotPanel />}
-        {theaterMode && <TheaterOverlay />}
-      </div>
-      {!theaterMode && (
-        <>
-          <EventFeed />
-          <AlertBell />
-          <AlertsPanel />
-          <CountryOverview />
-          <EventDetail />
-          <SourceHealth />
-          <TrendTable />
-          <DisclaimerFooter />
-          <MethodologyPage />
-        </>
-      )}
+      <Suspense fallback={
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-bg)", color: "var(--color-text-secondary)", fontSize: 13 }}>
+          Loading Echelon...
+        </div>
+      }>
+        <div className="echelon-canvas">
+          <EchelonMap />
+          {sidebarOpen && !theaterMode && <InvestigationSidebar />}
+          {copilotOpen && !theaterMode && <CopilotPanel />}
+          {theaterMode && <TheaterOverlay />}
+        </div>
+        {!theaterMode && (
+          <>
+            <EventFeed />
+            <AlertBell />
+            <AlertsPanel />
+            <CountryOverview />
+            <EventDetail />
+            <SourceHealth />
+            <TrendTable />
+            <DisclaimerFooter />
+            <MethodologyPage />
+          </>
+        )}
+      </Suspense>
     </div>
   );
 }

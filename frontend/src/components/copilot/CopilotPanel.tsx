@@ -11,13 +11,15 @@
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEchelonStore, type CopilotMessage } from "@/store/echelonStore";
-import { copilotApi } from "@/services/api";
+import { copilotApi, type ConversationSummary } from "@/services/api";
 import { format } from "date-fns";
 
 export default function CopilotPanel() {
   const {
     copilotMessages,
     addCopilotMessage,
+    updateCopilotMessage,
+    clearCopilotMessages,
     setCopilotOpen,
     byokKey,
     setByokKey,
@@ -25,6 +27,9 @@ export default function CopilotPanel() {
     viewState,
     dateRange,
     selectedCell,
+    user,
+    currentConversationId,
+    setCurrentConversationId,
   } = useEchelonStore();
 
   const [input, setInput] = useState("");
@@ -32,6 +37,8 @@ export default function CopilotPanel() {
   const [showKeyPrompt, setShowKeyPrompt] = useState(!byokKey);
   const [keyInput, setKeyInput] = useState("");
   const [provider, setProvider] = useState<"anthropic" | "openai" | "google" | "ollama">("ollama");
+  const [showConversations, setShowConversations] = useState(false);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,45 +73,59 @@ export default function CopilotPanel() {
     setInput("");
     setIsThinking(true);
 
-    try {
-      const response = await copilotApi.chat(
-        {
-          messages: [...copilotMessages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-          provider,
-          mapContext: {
-            viewport: {
-              center: [viewState.longitude ?? 0, viewState.latitude ?? 20],
-              zoom: viewState.zoom ?? 2,
-            },
-            dateRange: {
-              from: dateRange.from.toISOString().split("T")[0],
-              to: dateRange.to.toISOString().split("T")[0],
-            },
-            selectedCell: selectedCell?.h3Index,
-          },
-        },
-        byokKey || ""
-      );
+    const assistantId = crypto.randomUUID();
+    const assistantMessage: CopilotMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      toolCalls: [],
+      timestamp: new Date(),
+    };
+    addCopilotMessage(assistantMessage);
 
-      const assistantMessage: CopilotMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: response.content,
-        toolCalls: response.toolCallsSummary?.map((t) => ({
-          toolName: t.toolName,
-          status: "complete" as const,
+    try {
+      const requestPayload = {
+        messages: [...copilotMessages, userMessage].map((m) => ({
+          role: m.role,
+          content: m.content,
         })),
-        mapAction: response.mapAction as CopilotMessage["mapAction"],
-        timestamp: new Date(),
+        provider,
+        mapContext: {
+          viewport: {
+            center: [viewState.longitude ?? 0, viewState.latitude ?? 20] as [number, number],
+            zoom: viewState.zoom ?? 2,
+          },
+          dateRange: {
+            from: dateRange.from.toISOString().split("T")[0],
+            to: dateRange.to.toISOString().split("T")[0],
+          },
+          selectedCell: selectedCell?.h3Index,
+        },
       };
 
-      addCopilotMessage(assistantMessage);
+      let accumulated = "";
+      const toolCalls: Array<{ toolName: string; status: "pending" | "complete" | "error" }> = [];
 
-      if (response.mapAction) {
-        applyMapAction(response.mapAction as Parameters<typeof applyMapAction>[0]);
+      for await (const event of copilotApi.chatStream(requestPayload, byokKey || "")) {
+        if (event.type === "text" && event.content) {
+          accumulated += event.content;
+          updateCopilotMessage(assistantId, { content: accumulated });
+        } else if (event.type === "tool_start" && event.name) {
+          toolCalls.push({ toolName: event.name, status: "pending" });
+          updateCopilotMessage(assistantId, { toolCalls: [...toolCalls] });
+        } else if (event.type === "tool_end" && event.name) {
+          const tc = toolCalls.find((t) => t.toolName === event.name && t.status === "pending");
+          if (tc) tc.status = "complete";
+          updateCopilotMessage(assistantId, { toolCalls: [...toolCalls] });
+        } else if (event.type === "map_action" && event.action) {
+          const mapAction = event.action as CopilotMessage["mapAction"];
+          updateCopilotMessage(assistantId, { mapAction });
+          if (mapAction) applyMapAction(mapAction);
+        } else if (event.type === "error") {
+          updateCopilotMessage(assistantId, {
+            content: accumulated || event.detail || "Copilot request failed",
+          });
+        }
       }
     } catch (err: unknown) {
       let errorMsg = "Something went wrong. Check that your API key is valid and try again.";
@@ -116,22 +137,109 @@ export default function CopilotPanel() {
         else if (status === 503 || msg.includes("503")) errorMsg = provider === "ollama"
           ? "Ollama is not running on the server. Install and start it, or switch to another provider."
           : "Service temporarily unavailable. Try again in a moment.";
-        else if (status === 502 || msg.includes("502")) errorMsg = "The copilot backend is restarting. Try again in a few seconds.";
         else if (msg) {
-          // Surface the actual error detail from the API
           try { errorMsg = JSON.parse(msg).detail || errorMsg; } catch { errorMsg = msg.length < 200 ? msg : errorMsg; }
         }
       }
-      addCopilotMessage({
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: errorMsg,
-        timestamp: new Date(),
-      });
+      updateCopilotMessage(assistantId, { content: errorMsg });
     } finally {
       setIsThinking(false);
     }
-  }, [input, byokKey, isThinking, copilotMessages, addCopilotMessage, applyMapAction, viewState, dateRange, selectedCell, provider]);
+  }, [input, byokKey, isThinking, copilotMessages, addCopilotMessage, updateCopilotMessage, applyMapAction, viewState, dateRange, selectedCell, provider]);
+
+  const handleLoadConversations = useCallback(async () => {
+    if (!user) return;
+    try {
+      const list = await copilotApi.listConversations();
+      setConversations(list);
+      setShowConversations(true);
+    } catch { /* non-critical */ }
+  }, [user]);
+
+  const handleSaveConversation = useCallback(async () => {
+    if (!user || copilotMessages.length === 0) return;
+    const firstUserMsg = copilotMessages.find((m) => m.role === "user");
+    const title = firstUserMsg?.content.slice(0, 60) || "Untitled conversation";
+    try {
+      if (currentConversationId) {
+        await copilotApi.updateConversation(currentConversationId, {
+          messages: copilotMessages.map((m) => ({ role: m.role, content: m.content })),
+        });
+      } else {
+        const result = await copilotApi.saveConversation({
+          title,
+          provider,
+          messages: copilotMessages.map((m) => ({ role: m.role, content: m.content })),
+        });
+        setCurrentConversationId(result.id);
+      }
+    } catch { /* non-critical */ }
+  }, [user, copilotMessages, currentConversationId, setCurrentConversationId, provider]);
+
+  const handleLoadConversation = useCallback(async (id: string) => {
+    try {
+      const conv = await copilotApi.loadConversation(id);
+      clearCopilotMessages();
+      setCurrentConversationId(conv.id);
+      for (const msg of conv.messages) {
+        addCopilotMessage({
+          id: crypto.randomUUID(),
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        });
+      }
+      setShowConversations(false);
+    } catch { /* non-critical */ }
+  }, [clearCopilotMessages, setCurrentConversationId, addCopilotMessage]);
+
+  const handleNewConversation = useCallback(() => {
+    clearCopilotMessages();
+    setShowConversations(false);
+  }, [clearCopilotMessages]);
+
+  const handleExportMarkdown = useCallback(() => {
+    if (copilotMessages.length === 0) return;
+    const lines = [
+      `# Echelon Copilot — Analysis Export`,
+      `_Exported ${new Date().toISOString()}_\n`,
+      `**Viewport:** ${(viewState.longitude ?? 0).toFixed(4)}, ${(viewState.latitude ?? 20).toFixed(4)} | Zoom ${(viewState.zoom ?? 2).toFixed(1)}`,
+      `**Date range:** ${dateRange.from.toISOString().split("T")[0]} to ${dateRange.to.toISOString().split("T")[0]}`,
+      `**Provider:** ${provider}\n`,
+      `---\n`,
+    ];
+    for (const msg of copilotMessages) {
+      lines.push(`### ${msg.role === "user" ? "Analyst" : "Copilot"} — ${format(msg.timestamp, "HH:mm")}\n`);
+      if (msg.toolCalls?.length) {
+        lines.push(`> Tools used: ${msg.toolCalls.map((t) => t.toolName).join(", ")}\n`);
+      }
+      lines.push(msg.content + "\n");
+    }
+    lines.push(`\n---\n_Generated by Echelon GEOINT Dashboard_`);
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `echelon-analysis-${format(new Date(), "yyyy-MM-dd-HHmm")}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [copilotMessages, viewState, dateRange, provider]);
+
+  const handleSharePermalink = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set("lng", (viewState.longitude ?? 0).toFixed(4));
+    params.set("lat", (viewState.latitude ?? 20).toFixed(4));
+    params.set("z", (viewState.zoom ?? 2).toFixed(1));
+    params.set("from", dateRange.from.toISOString().split("T")[0]);
+    params.set("to", dateRange.to.toISOString().split("T")[0]);
+    if (selectedCell) params.set("cell", selectedCell.h3Index);
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    navigator.clipboard.writeText(url).catch(() => {});
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  }, [viewState, dateRange, selectedCell]);
+
+  const [shareCopied, setShareCopied] = useState(false);
 
   return (
     <div
@@ -155,14 +263,108 @@ export default function CopilotPanel() {
           <div style={{ fontWeight: 600, fontSize: 13 }}>Echelon Copilot</div>
           <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "capitalize" }}>{provider === "ollama" ? "Self-hosted" : "BYOK"} — {provider}</div>
         </div>
-        <button
-          onClick={() => setCopilotOpen(false)}
-          aria-label="Close copilot"
-          style={{ background: "none", border: "none", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 18, padding: 4 }}
-        >
-          ×
-        </button>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {user && (
+            <>
+              <button
+                onClick={handleLoadConversations}
+                aria-label="Browse saved conversations"
+                title="Saved conversations"
+                style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 10, padding: "2px 6px" }}
+              >
+                History
+              </button>
+              {copilotMessages.length > 0 && (
+                <button
+                  onClick={handleSaveConversation}
+                  aria-label="Save conversation"
+                  title={currentConversationId ? "Update saved conversation" : "Save conversation"}
+                  style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 10, padding: "2px 6px" }}
+                >
+                  Save
+                </button>
+              )}
+            </>
+          )}
+          {copilotMessages.length > 0 && (
+            <>
+              <button
+                onClick={handleExportMarkdown}
+                aria-label="Export conversation as markdown"
+                title="Export as Markdown"
+                style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 10, padding: "2px 6px" }}
+              >
+                Export
+              </button>
+              <button
+                onClick={handleSharePermalink}
+                aria-label="Copy share link"
+                title="Copy permalink to clipboard"
+                style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: 4, color: shareCopied ? "var(--color-accent)" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 10, padding: "2px 6px" }}
+              >
+                {shareCopied ? "Copied" : "Share"}
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => setCopilotOpen(false)}
+            aria-label="Close copilot"
+            style={{ background: "none", border: "none", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 18, padding: 4 }}
+          >
+            ×
+          </button>
+        </div>
       </div>
+
+      {/* Conversation history list */}
+      {showConversations && (
+        <div style={{ padding: 12, borderBottom: "1px solid var(--color-border)", background: "var(--color-surface-raised)", maxHeight: 240, overflow: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-primary)" }}>Saved Conversations</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button
+                onClick={handleNewConversation}
+                style={{ background: "none", border: "1px solid var(--color-border)", borderRadius: 4, color: "var(--color-accent)", cursor: "pointer", fontSize: 10, padding: "2px 8px" }}
+              >
+                + New
+              </button>
+              <button
+                onClick={() => setShowConversations(false)}
+                style={{ background: "none", border: "none", color: "var(--color-text-muted)", cursor: "pointer", fontSize: 14, padding: "0 4px" }}
+              >
+                x
+              </button>
+            </div>
+          </div>
+          {conversations.length === 0 ? (
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", textAlign: "center", padding: 12 }}>
+              No saved conversations yet.
+            </div>
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.id}
+                onClick={() => handleLoadConversation(conv.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleLoadConversation(conv.id)}
+                style={{
+                  padding: "8px 10px", marginBottom: 4, borderRadius: 6, cursor: "pointer",
+                  background: conv.id === currentConversationId ? "var(--color-accent-muted)" : "transparent",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {conv.title}
+                </div>
+                <div style={{ fontSize: 9, color: "var(--color-text-muted)", marginTop: 2 }}>
+                  {conv.messageCount} messages | {conv.provider} | {format(new Date(conv.updatedAt), "MMM d HH:mm")}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* BYOK key prompt */}
       {showKeyPrompt && (

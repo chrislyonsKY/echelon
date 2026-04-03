@@ -22,6 +22,7 @@ export interface LayerVisibility {
   sentinel2: boolean;
   osmInfrastructure: boolean;
   landscanPopulation: boolean;
+  firmsThermal: boolean;
 }
 
 export interface SignalWeights {
@@ -73,6 +74,7 @@ const DEFAULT_LAYER_VISIBILITY: LayerVisibility = {
   sentinel2: false,
   osmInfrastructure: false,
   landscanPopulation: false,
+  firmsThermal: false,
 };
 
 const DEFAULT_SIGNAL_WEIGHTS: SignalWeights = {
@@ -99,6 +101,7 @@ interface EchelonState {
   copilotMessages: CopilotMessage[];
   copilotOpen: boolean;
   byokKey: string | null; // Browser-side key — never sent to server unless opt-in
+  currentConversationId: string | null;
 
   // Alerts state
   unreadAlertCount: number;
@@ -131,8 +134,11 @@ interface EchelonState {
   setDateRange: (from: Date, to: Date) => void;
   applyMapAction: (action: MapAction) => void;
   addCopilotMessage: (message: CopilotMessage) => void;
+  updateCopilotMessage: (id: string, updates: Partial<CopilotMessage>) => void;
   setCopilotOpen: (open: boolean) => void;
   setByokKey: (key: string | null) => void;
+  setCurrentConversationId: (id: string | null) => void;
+  clearCopilotMessages: () => void;
   setSidebarTab: (tab: "activity" | "events" | "layers") => void;
   setSidebarOpen: (open: boolean) => void;
   setUser: (user: User | null) => void;
@@ -164,6 +170,7 @@ export const useEchelonStore = create<EchelonState>()(
     copilotMessages: [],
     copilotOpen: false,
     byokKey: null,
+    currentConversationId: null,
     unreadAlertCount: 0,
     alertPanelOpen: false,
     sidebarOpen: false,
@@ -243,9 +250,20 @@ export const useEchelonStore = create<EchelonState>()(
     addCopilotMessage: (message) =>
       set((state) => ({ copilotMessages: [...state.copilotMessages, message] })),
 
+    updateCopilotMessage: (id, updates) =>
+      set((state) => ({
+        copilotMessages: state.copilotMessages.map((m) =>
+          m.id === id ? { ...m, ...updates } : m
+        ),
+      })),
+
     setCopilotOpen: (open) => set({ copilotOpen: open }),
 
     setByokKey: (key) => set({ byokKey: key }),
+
+    setCurrentConversationId: (id) => set({ currentConversationId: id }),
+
+    clearCopilotMessages: () => set({ copilotMessages: [], currentConversationId: null }),
 
     setSidebarTab: (tab) => set({ sidebarTab: tab }),
     setSidebarOpen: (open) => set({ sidebarOpen: open }),

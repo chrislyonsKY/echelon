@@ -7,6 +7,8 @@ registers routers, sets up middleware, and initializes the database connection.
 import logging
 from contextlib import asynccontextmanager
 
+_config_logger = logging.getLogger(__name__)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -39,14 +41,20 @@ def create_app() -> FastAPI:
         description="GEOINT conflict and maritime activity monitoring dashboard",
         version="0.2.0",
         lifespan=lifespan,
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if settings.debug else None,
+        redoc_url="/api/redoc" if settings.debug else None,
+        openapi_url="/api/openapi.json" if settings.debug else None,
     )
+
+    # SECURITY: reject wildcard origins with credentials — browsers block this
+    # anyway, but guard against misconfiguration
+    cors_origins = [o for o in settings.allowed_origins if o != "*"]
+    if len(cors_origins) != len(settings.allowed_origins):
+        _config_logger.warning("CORS: removed '*' from allowed_origins — wildcard is incompatible with allow_credentials=True")
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.allowed_origins,
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "PATCH"],
         allow_headers=[
