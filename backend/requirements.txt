@@ -49,4 +49,4 @@ resend==2.4.0
 
 # Utilities
 python-dateutil==2.9.0
-orjson==3.11.6
+orjson==3.11.8
