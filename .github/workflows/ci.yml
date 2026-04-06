@@ -27,7 +27,7 @@ jobs:
           CI: true
       - name: Upload frontend coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: frontend/coverage/coverage-final.json
           flags: frontend
@@ -59,7 +59,7 @@ jobs:
         run: pytest tests/ -v --cov=app --cov-report=xml --cov-report=term
       - name: Upload backend coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: backend/coverage.xml
           flags: backend
