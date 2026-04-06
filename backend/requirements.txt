@@ -11,7 +11,7 @@ geoalchemy2==0.15.2
 
 # Task queue
 celery[redis]==5.4.0
-redis==5.1.1
+redis==7.4.0
 flower==2.0.1
 
 # HTTP client
